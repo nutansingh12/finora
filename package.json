@@ -1,0 +1,62 @@
+{
+  "name": "finora",
+  "version": "1.0.0",
+  "description": "Comprehensive stock tracking and portfolio management application",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:mobile\" \"npm run dev:web\"",
+    "dev:backend": "cd packages/backend && npm run dev",
+    "dev:mobile": "cd packages/mobile && npm run start",
+    "dev:web": "cd packages/web && npm run dev",
+    "build": "npm run build:backend && npm run build:web",
+    "build:backend": "cd packages/backend && npm run build",
+    "build:web": "cd packages/web && npm run build",
+    "test": "npm run test:backend && npm run test:mobile && npm run test:web",
+    "test:backend": "cd packages/backend && npm run test",
+    "test:mobile": "cd packages/mobile && npm run test",
+    "test:web": "cd packages/web && npm run test",
+    "lint": "eslint packages/*/src --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint packages/*/src --ext .js,.jsx,.ts,.tsx --fix",
+    "clean": "rm -rf packages/*/node_modules packages/*/dist packages/*/build node_modules",
+    "install:all": "npm install && npm run install:backend && npm run install:mobile && npm run install:web",
+    "install:backend": "cd packages/backend && npm install",
+    "install:mobile": "cd packages/mobile && npm install",
+    "install:web": "cd packages/web && npm install"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.45.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-native": "^4.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nutansinghsavia/finora.git"
+  },
+  "keywords": [
+    "stock-tracking",
+    "portfolio-management",
+    "mobile-app",
+    "react-native",
+    "progressive-web-app",
+    "yahoo-finance",
+    "real-time-data",
+    "financial-analytics"
+  ],
+  "author": "Nutan Singh",
+  "license": "MIT"
+}
