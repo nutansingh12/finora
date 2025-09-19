@@ -44,7 +44,7 @@ const LoginPage: NextPage = () => {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
-    resolver: yupResolver(schema),
+    resolver: yupResolver(schema) as any,
     defaultValues: {
       email: '',
       password: '',

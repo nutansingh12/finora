@@ -32,7 +32,7 @@ import {
   Person,
   Add,
   BarChart,
-  Alert,
+  Warning,
 } from '@mui/icons-material';
 
 import { useAuthStore } from '@/store/authStore';
@@ -95,7 +95,7 @@ const Layout = ({ children }: LayoutProps) => {
     },
     {
       text: 'Alerts',
-      icon: <Alert />,
+      icon: <Warning />,
       path: '/alerts',
     },
     {
@@ -327,7 +327,7 @@ const Layout = ({ children }: LayoutProps) => {
         }}
       >
         <Toolbar />
-        {children}
+        {children as any}
       </Box>
 
       {/* Floating Feedback Button */}

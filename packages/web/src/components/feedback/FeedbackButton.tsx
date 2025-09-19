@@ -9,10 +9,10 @@ interface FeedbackButtonProps {
   className?: string;
 }
 
-export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ 
+export function FeedbackButton({
   variant = 'floating',
   className = ''
-}) => {
+}: FeedbackButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const baseClasses = "flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2";
@@ -59,4 +59,4 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
       />
     </>
   );
-};
+}

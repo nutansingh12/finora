@@ -15,7 +15,7 @@ interface FeedbackData {
   screenshot_base64?: string;
 }
 
-export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
+export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const [rating, setRating] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [feedbackText, setFeedbackText] = useState<string>('');
@@ -297,4 +297,4 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       </div>
     </div>
   );
-};
+}
