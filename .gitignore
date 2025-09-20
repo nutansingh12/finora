@@ -252,3 +252,4 @@ coverage/
 # Documentation files (don't commit to repo)
 *.md
 !README.md
+.vercel

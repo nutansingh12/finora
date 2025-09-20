@@ -11,7 +11,7 @@
     "dev:backend": "cd packages/backend && npm run dev",
     "dev:mobile": "cd packages/mobile && npm run start",
     "dev:web": "cd packages/web && npm run dev",
-    "build": "npm run build:backend && npm run build:web",
+    "build": "npm run build:web",
     "build:backend": "cd packages/backend && npm run build",
     "build:web": "cd packages/web && npm run build",
     "test": "npm run test:backend && npm run test:mobile && npm run test:web",
@@ -58,5 +58,9 @@
     "financial-analytics"
   ],
   "author": "Nutan Singh",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "react-native-push-notification": "^8.1.1"
+  }
 }
