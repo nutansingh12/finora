@@ -1,20 +1,9 @@
 import React from 'react';
-import {View, StyleSheet, Image} from 'react-native';
+import {View, StyleSheet, Image, Alert} from 'react-native';
 import {Button, Text, useTheme} from 'react-native-paper';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {StackNavigationProp} from '@react-navigation/stack';
-import {AuthStackParamList} from '../../navigation/AuthNavigator';
 
-type WelcomeScreenNavigationProp = StackNavigationProp<
-  AuthStackParamList,
-  'Welcome'
->;
-
-interface Props {
-  navigation: WelcomeScreenNavigationProp;
-}
-
-export const WelcomeScreen: React.FC<Props> = ({navigation}) => {
+export const WelcomeScreen: React.FC = () => {
   const theme = useTheme();
 
   return (
@@ -47,14 +36,14 @@ export const WelcomeScreen: React.FC<Props> = ({navigation}) => {
         <View style={styles.buttons}>
           <Button
             mode="contained"
-            onPress={() => navigation.navigate('Login')}
+            onPress={() => Alert.alert('Sign In', 'Sign in functionality will be available soon!')}
             style={styles.button}
             contentStyle={styles.buttonContent}>
             Sign In
           </Button>
           <Button
             mode="outlined"
-            onPress={() => navigation.navigate('Register')}
+            onPress={() => Alert.alert('Create Account', 'Account creation will be available soon!')}
             style={styles.button}
             contentStyle={styles.buttonContent}>
             Create Account

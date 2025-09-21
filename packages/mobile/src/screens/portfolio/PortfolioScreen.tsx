@@ -9,22 +9,13 @@ import {
   Surface,
 } from 'react-native-paper';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {useNavigation} from '@react-navigation/native';
-import {StackNavigationProp} from '@react-navigation/stack';
-import {MainStackParamList} from '../../navigation/MainNavigator';
 import {StockService} from '../../services/StockService';
 import {PortfolioSummary} from '../../components/portfolio/PortfolioSummary';
 import {StockList} from '../../components/portfolio/StockList';
 import {useAuth} from '../../store/AuthContext';
 
-type PortfolioScreenNavigationProp = StackNavigationProp<
-  MainStackParamList,
-  'MainTabs'
->;
-
 export const PortfolioScreen: React.FC = () => {
   const theme = useTheme();
-  const navigation = useNavigation<PortfolioScreenNavigationProp>();
   const {user} = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,14 +45,11 @@ export const PortfolioScreen: React.FC = () => {
   };
 
   const handleAddStock = () => {
-    navigation.navigate('AddStock');
+    Alert.alert('Add Stock', 'Add stock functionality will be available soon!');
   };
 
   const handleStockPress = (stock: any) => {
-    navigation.navigate('StockDetails', {
-      symbol: stock.symbol,
-      stockId: stock.id,
-    });
+    Alert.alert('Stock Details', `Stock details for ${stock.symbol} will be available soon!`);
   };
 
   if (loading) {
