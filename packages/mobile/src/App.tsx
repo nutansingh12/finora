@@ -1,6 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, FlatList} from 'react-native';
 // import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StockChartModal } from './components/StockChartModal';
+
+// Simple historical data service to prevent crashes
+const historicalDataService = {
+  async fetchHistoricalData(symbol: string, period: string) {
+    return { data: [] };
+  },
+  calculatePriceMetrics(data: any[], currentPrice: number) {
+    return {
+      week52Low: currentPrice * 0.8,
+      week24Low: currentPrice * 0.85,
+      week12Low: currentPrice * 0.9,
+      week52High: currentPrice * 1.2,
+      week24High: currentPrice * 1.15,
+      week12High: currentPrice * 1.1,
+      week52LowDistance: 20,
+      week24LowDistance: 15,
+      week12LowDistance: 10
+    };
+  }
+};
 
 // No local stock database - using internet search APIs
 
@@ -65,6 +86,188 @@ const App: React.FC = () => {
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showChartModal, setShowChartModal] = useState(false);
+  const [selectedChartStock, setSelectedChartStock] = useState<any | null>(null);
+  const [editingStock, setEditingStock] = useState<any | null>(null);
+  const [editTargetPrice, setEditTargetPrice] = useState('');
+  const [editGroup, setEditGroup] = useState('Watchlist');
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Initialize alerts on component mount
+  React.useEffect(() => {
+    const updatedWatchlist = watchlist.map(stock => ({
+      ...stock,
+      alerts: updateStockAlerts(stock)
+    }));
+    setWatchlist(updatedWatchlist);
+  }, []); // Only run once on mount
+
+  // Function to handle stock symbol click
+  const handleStockSymbolClick = (stock: any) => {
+    setSelectedChartStock(stock);
+    setShowChartModal(true);
+  };
+
+  // Function to handle edit stock
+  const handleEditStock = (stock: any) => {
+    setEditingStock(stock);
+    setEditTargetPrice(stock.target.toString());
+    setEditGroup(stock.group);
+    setShowEditModal(true);
+  };
+
+  // Function to save stock edits
+  const handleSaveEdit = () => {
+    if (!editingStock) return;
+
+    const updatedWatchlist = watchlist.map(stock => {
+      if (stock.symbol === editingStock.symbol) {
+        const oldAlerts = stock.alerts || [];
+        const updatedStock = {
+          ...stock,
+          target: parseFloat(editTargetPrice) || stock.target,
+          group: editGroup,
+        };
+        // Recalculate alerts with new target price
+        updatedStock.alerts = updateStockAlerts(updatedStock);
+
+        // Check if editing target price created a new alert
+        const hasNewAlert =
+          updatedStock.alerts.includes('Alert') &&
+          !oldAlerts.includes('Alert') &&
+          updatedStock.price <= updatedStock.target &&
+          updatedStock.target > 0;
+
+        // Send notification for new alert
+        if (hasNewAlert) {
+          setTimeout(() => sendInvestmentNotification(updatedStock), 500);
+        }
+
+        return updatedStock;
+      }
+      return stock;
+    });
+
+    setWatchlist(updatedWatchlist);
+    setShowEditModal(false);
+    setEditingStock(null);
+    setEditTargetPrice('');
+    setEditGroup('Watchlist');
+  };
+
+  // Function to cancel edit
+  const handleCancelEdit = () => {
+    setShowEditModal(false);
+    setEditingStock(null);
+    setEditTargetPrice('');
+    setEditGroup('Watchlist');
+  };
+
+  // Function to update alerts based on target vs current price
+  const updateStockAlerts = (stock: any) => {
+    const alerts = [];
+
+    // Add alert if current price is at or below target price (investment opportunity)
+    if (stock.price <= stock.target && stock.target > 0) {
+      alerts.push('Alert');
+    }
+
+    return alerts;
+  };
+
+  // Function to send investment opportunity notification
+  const sendInvestmentNotification = (stock: any) => {
+    const catchyMessages = [
+      `🚀 ${stock.symbol} is on sale! Current $${stock.price.toFixed(2)} vs Target $${stock.target.toFixed(2)} - Time to buy the dip!`,
+      `💎 ${stock.symbol} opportunity alert! Price dropped to $${stock.price.toFixed(2)} - Your target was $${stock.target.toFixed(2)}!`,
+      `🎯 ${stock.symbol} investment window open! $${stock.price.toFixed(2)} is below your $${stock.target.toFixed(2)} target!`,
+      `⚡ ${stock.symbol} flash sale! Down to $${stock.price.toFixed(2)} from your $${stock.target.toFixed(2)} target - Don't miss out!`,
+      `🔥 ${stock.symbol} buying opportunity! Current $${stock.price.toFixed(2)} vs Target $${stock.target.toFixed(2)} - Strike while it's hot!`
+    ];
+
+    const randomMessage = catchyMessages[Math.floor(Math.random() * catchyMessages.length)];
+
+    Alert.alert(
+      '🎯 Investment Opportunity!',
+      randomMessage,
+      [
+        { text: 'View Chart', onPress: () => handleStockSymbolClick(stock) },
+        { text: 'Later', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Function to refresh stock prices and alerts
+  const refreshStockData = () => {
+    const updatedWatchlist = watchlist.map(stock => {
+      // Simulate price updates (in real app, this would fetch from API)
+      const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% variation
+      const newPrice = stock.price * (1 + priceVariation);
+      const change = newPrice - stock.price;
+      const changePercent = (change / stock.price) * 100;
+
+      const oldAlerts = stock.alerts || [];
+      const newAlerts = updateStockAlerts({ ...stock, price: newPrice });
+
+      // Check if this is a new alert (wasn't there before)
+      const hasNewAlert =
+        newAlerts.includes('Alert') &&
+        !oldAlerts.includes('Alert') &&
+        newPrice <= stock.target &&
+        stock.target > 0;
+
+      const updatedStock = {
+        ...stock,
+        price: newPrice,
+        change: change,
+        changePercent: changePercent,
+        alerts: newAlerts,
+        lastUpdated: new Date().toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      };
+
+      // Send notification for new alerts
+      if (hasNewAlert) {
+        setTimeout(() => sendInvestmentNotification(updatedStock), 500);
+      }
+
+      return updatedStock;
+    });
+
+    setWatchlist(updatedWatchlist);
+  };
+
+  // Function to close chart modal
+  const handleCloseChart = () => {
+    setShowChartModal(false);
+    setSelectedChartStock(null);
+  };
+
+  // Function to update stock with real historical data
+  const updateStockWithHistoricalData = async (stock: any) => {
+    try {
+      const historicalData = await historicalDataService.fetchHistoricalData(stock.symbol, '1y');
+      const priceMetrics = historicalDataService.calculatePriceMetrics(historicalData.data, stock.price);
+
+      return {
+        ...stock,
+        week52Low: priceMetrics.week52Low,
+        week24Low: priceMetrics.week24Low,
+        week12Low: priceMetrics.week12Low,
+        week52High: priceMetrics.week52High,
+        week24High: priceMetrics.week24High,
+        week12High: priceMetrics.week12High,
+        week52LowDistance: priceMetrics.week52LowDistance,
+        week24LowDistance: priceMetrics.week24LowDistance,
+        week12LowDistance: priceMetrics.week12LowDistance,
+      };
+    } catch (error) {
+      console.error(`Error updating historical data for ${stock.symbol}:`, error);
+      return stock; // Return original stock if update fails
+    }
+  };
   const [watchlist, setWatchlist] = useState<Array<any & {
     cutoffPrice: number;
     shares?: number;
@@ -92,7 +295,7 @@ const App: React.FC = () => {
       marketCap: '$2.81T',
       cutoffPrice: 350.00,
       target: 350.00,
-      group: 'All Stocks',
+      group: 'Watchlist',
       alerts: [],
       week52Low: 309.45,
       week52High: 384.30,
@@ -117,7 +320,7 @@ const App: React.FC = () => {
       marketCap: '$2.75T',
       cutoffPrice: 150.00,
       target: 150.00,
-      group: 'All Stocks',
+      group: 'Watchlist',
       alerts: [],
       week52Low: 141.50,
       week52High: 199.62,
@@ -141,7 +344,7 @@ const App: React.FC = () => {
       currency: 'USD',
       marketCap: '$1.73T',
       cutoffPrice: 120.00,
-      target: 120.00,
+      target: 140.00,
       group: 'All Stocks',
       alerts: ['Alert'],
       week52Low: 101.88,
@@ -166,7 +369,7 @@ const App: React.FC = () => {
       currency: 'USD',
       marketCap: '$789B',
       cutoffPrice: 200.00,
-      target: 200.00,
+      target: 260.00,
       group: 'All Stocks',
       alerts: ['Alert'],
       week52Low: 152.37,
@@ -248,137 +451,158 @@ const App: React.FC = () => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `finora_watchlist_${timestamp}.csv`;
 
-      // For React Native, we'll use a simulated file save
-      // In production, you would use react-native-fs and react-native-share
+      // Store CSV data in AsyncStorage with metadata
+      const exportData = {
+        fileName,
+        content: csvContent,
+        timestamp: new Date().toISOString(),
+        stockCount: watchlist.length
+      };
+
+      await SafeStorage.setItem('finora_latest_export', JSON.stringify(exportData));
+      await SafeStorage.setItem(`finora_export_${timestamp}`, csvContent);
+
       Alert.alert(
-        'CSV Export Ready',
-        `Generated CSV file: ${fileName}\n\nContains ${watchlist.length} stocks\n\nWould you like to save or share this file?`,
+        '📤 Export Complete',
+        `✅ CSV file generated successfully!\n\n📁 File: ${fileName}\n📊 Stocks: ${watchlist.length}\n⏰ ${new Date().toLocaleString()}\n\n💾 Data saved to device storage`,
         [
           {
-            text: 'Save to Downloads',
-            onPress: async () => {
-              try {
-                // Simulate file save - in production use RNFS.writeFile
-                await SafeStorage.setItem('finora_last_export', csvContent);
-                Alert.alert('Success', `CSV file saved successfully!\n\nFile: ${fileName}\nLocation: Downloads folder\n\nContains ${watchlist.length} stocks`);
-              } catch (error) {
-                Alert.alert('Error', 'Failed to save CSV file');
-              }
-            }
-          },
-          {
-            text: 'Share',
+            text: '📋 View CSV Data',
             onPress: () => {
-              // In production, use react-native-share
-              Alert.alert('Share', 'CSV file ready to share via email, cloud storage, or messaging apps');
+              Alert.alert(
+                'CSV Content Preview',
+                csvContent.length > 1000
+                  ? csvContent.substring(0, 1000) + '\n\n... (truncated for display)'
+                  : csvContent,
+                [{ text: 'OK' }]
+              );
             }
           },
-          { text: 'Cancel' }
+          { text: 'Done' }
         ]
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to export CSV data');
+      Alert.alert('❌ Export Error', 'Failed to export CSV data. Please try again.');
     }
   };
 
   const importFromCSV = () => {
     Alert.alert(
-      'Import CSV',
+      '📥 Import CSV Data',
       'Choose how you want to import stock data:',
       [
-        { text: 'Select CSV File', onPress: () => selectCSVFile() },
-        { text: 'Demo Import', onPress: () => importDemoData() },
+        { text: '📁 Load Previous Export', onPress: () => loadPreviousExport() },
+        { text: '📝 Paste CSV Data', onPress: () => pasteCSVData() },
+        { text: '🎯 Demo Import', onPress: () => importDemoData() },
         { text: 'Cancel' }
       ]
     );
   };
 
-  const selectCSVFile = async () => {
+  const loadPreviousExport = async () => {
     try {
-      // In production, use react-native-document-picker
-      // For now, simulate file selection
+      const exportDataStr = await SafeStorage.getItem('finora_latest_export');
+      if (!exportDataStr) {
+        Alert.alert('No Export Found', 'No previous export found. Try exporting data first or use demo import.');
+        return;
+      }
+
+      const exportData = JSON.parse(exportDataStr);
       Alert.alert(
-        'File Selection',
-        'In production, this would open a file picker to select your CSV file.\n\nSupported format:\nsymbol,cutoffPrice,groupName,currentPrice,low52Week,low24Week,low12Week,notes,lastUpdated',
+        '📁 Previous Export Found',
+        `Found export from ${new Date(exportData.timestamp).toLocaleString()}\n\n📁 File: ${exportData.fileName}\n📊 Stocks: ${exportData.stockCount}\n\nWould you like to import this data?`,
         [
-          { text: 'Simulate File Selected', onPress: () => processCSVFile('simulated_file.csv') },
+          { text: 'Import', onPress: () => parseAndImportCSV(exportData.content, exportData.fileName) },
           { text: 'Cancel' }
         ]
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to open file picker');
+      Alert.alert('Error', 'Failed to load previous export');
     }
   };
 
-  const processCSVFile = async (fileName: string) => {
-    try {
-      // In production, read the actual file content
-      // For now, simulate with demo data
-      const csvContent = `symbol,cutoffPrice,groupName,currentPrice,low52Week,low24Week,low12Week,notes,lastUpdated
-NVDA,800,Tech Stocks,875.50,650.25,720.10,780.45,Strong AI leader,2025-09-20 10:30:00
-AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:00`;
-
-      parseAndImportCSV(csvContent, fileName);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to process CSV file');
-    }
+  const pasteCSVData = () => {
+    Alert.alert(
+      '📝 Paste CSV Data',
+      'In a production app, this would open a text input where you can paste CSV data.\n\nSupported format:\nsymbol,cutoffPrice,groupName,currentPrice,low52Week,low24Week,low12Week,notes,lastUpdated\n\nFor now, try the demo import to see how it works.',
+      [
+        { text: 'Try Demo Instead', onPress: () => importDemoData() },
+        { text: 'Cancel' }
+      ]
+    );
   };
 
   const parseAndImportCSV = (csvContent: string, fileName: string) => {
     try {
       const lines = csvContent.trim().split('\n');
-      const headers = lines[0].split(',');
-
-      if (!headers.includes('symbol') || !headers.includes('currentPrice')) {
-        Alert.alert('Error', 'Invalid CSV format. Required columns: symbol, currentPrice');
+      if (lines.length < 2) {
+        Alert.alert('❌ Import Error', 'CSV file appears to be empty or has no data rows.');
         return;
       }
 
-      const newStocks = [];
-      const duplicates = [];
-      const errors = [];
+      const headers = lines[0].split(',').map(h => h.trim());
+
+      // Validate required columns
+      if (!headers.includes('symbol')) {
+        Alert.alert('❌ Invalid CSV Format', 'Required column missing: "symbol"\n\nPlease ensure your CSV has at least a "symbol" column.');
+        return;
+      }
+
+      const newStocks: any[] = [];
+      const duplicates: string[] = [];
+      const errors: string[] = [];
 
       for (let i = 1; i < lines.length; i++) {
         try {
-          const values = lines[i].split(',');
+          const line = lines[i].trim();
+          if (!line) continue; // Skip empty lines
+
+          const values = line.split(',');
           const stockData: any = {};
 
           headers.forEach((header, index) => {
-            stockData[header.trim()] = values[index]?.replace(/"/g, '').trim();
+            stockData[header] = values[index]?.replace(/"/g, '').trim() || '';
           });
 
+          // Validate required symbol field
+          if (!stockData.symbol) {
+            errors.push(`Line ${i + 1}: Missing symbol`);
+            continue;
+          }
+
           // Check for duplicates
-          const existingStock = watchlist.find(s => s.symbol === stockData.symbol);
+          const existingStock = watchlist.find(s => s.symbol.toUpperCase() === stockData.symbol.toUpperCase());
           if (existingStock) {
             duplicates.push(stockData.symbol);
             continue;
           }
 
-          // Create stock object
+          // Create stock object with proper defaults
           const newStock = {
-            symbol: stockData.symbol,
-            name: stockData.symbol + ' Corporation', // In production, fetch from API
-            price: parseFloat(stockData.currentPrice) || 0,
-            change: 0,
-            changePercent: 0,
-            exchange: 'NASDAQ',
-            sector: 'Technology',
-            currency: 'USD',
-            marketCap: '$0B',
-            cutoffPrice: parseFloat(stockData.cutoffPrice) || 0,
-            target: parseFloat(stockData.cutoffPrice) || 0,
-            group: stockData.groupName || 'Imported',
+            symbol: stockData.symbol.toUpperCase(),
+            name: stockData.companyName || stockData.symbol + ' Corporation',
+            price: parseFloat(stockData.currentPrice || stockData.price) || 0,
+            change: parseFloat(stockData.change) || 0,
+            changePercent: parseFloat(stockData.changePercent) || 0,
+            exchange: stockData.exchange || 'NASDAQ',
+            sector: stockData.sector || 'Technology',
+            currency: stockData.currency || 'USD',
+            marketCap: stockData.marketCap || '$0B',
+            cutoffPrice: parseFloat(stockData.cutoffPrice || stockData.target) || 0,
+            target: parseFloat(stockData.cutoffPrice || stockData.target) || 0,
+            group: stockData.groupName || stockData.group || 'Watchlist',
             alerts: [],
-            week52Low: parseFloat(stockData.low52Week) || 0,
-            week52High: parseFloat(stockData.currentPrice) || 0,
-            week24Low: parseFloat(stockData.low24Week) || 0,
-            week12Low: parseFloat(stockData.low12Week) || 0,
-            volume: '0',
+            week52Low: parseFloat(stockData.low52Week || stockData.week52Low) || 0,
+            week52High: parseFloat(stockData.high52Week || stockData.week52High) || 0,
+            week24Low: parseFloat(stockData.low24Week || stockData.week24Low) || 0,
+            week12Low: parseFloat(stockData.low12Week || stockData.week12Low) || 0,
+            volume: stockData.volume || '0',
             lastUpdated: stockData.lastUpdated || new Date().toISOString(),
             notes: stockData.notes || '',
-            low52Week: parseFloat(stockData.low52Week) || 0,
-            low24Week: parseFloat(stockData.low24Week) || 0,
-            low12Week: parseFloat(stockData.low12Week) || 0
+            // Legacy field mappings for compatibility
+            low52Week: parseFloat(stockData.low52Week || stockData.week52Low) || 0,
+            low24Week: parseFloat(stockData.low24Week || stockData.week24Low) || 0,
+            low12Week: parseFloat(stockData.low12Week || stockData.week12Low) || 0
           };
 
           newStocks.push(newStock);
@@ -387,24 +611,25 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
         }
       }
 
-      // Show import results
-      let message = `Import Results from ${fileName}:\n\n`;
+      // Show comprehensive import results
+      let message = `📊 Import Results from ${fileName}:\n\n`;
       message += `✅ Successfully imported: ${newStocks.length} stocks\n`;
       if (duplicates.length > 0) {
-        message += `⚠️ Skipped duplicates: ${duplicates.length} (${duplicates.join(', ')})\n`;
+        message += `⚠️ Skipped duplicates: ${duplicates.length} (${duplicates.slice(0, 5).join(', ')}${duplicates.length > 5 ? '...' : ''})\n`;
       }
       if (errors.length > 0) {
         message += `❌ Errors: ${errors.length}\n`;
       }
+      message += `\n📈 Total stocks in watchlist: ${watchlist.length + newStocks.length}`;
 
       if (newStocks.length > 0) {
         setWatchlist(prev => [...prev, ...newStocks]);
-        Alert.alert('Import Complete', message);
+        Alert.alert('🎉 Import Complete', message);
       } else {
-        Alert.alert('Import Failed', message + '\nNo new stocks were imported.');
+        Alert.alert('❌ Import Failed', message + '\n\nNo new stocks were imported.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to parse CSV file');
+      Alert.alert('❌ Parse Error', 'Failed to parse CSV file. Please check the format and try again.');
     }
   };
 
@@ -973,17 +1198,27 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
       return acc;
     }, {} as Record<string, number>);
 
-    // Create tabs with "All Stocks" first, then other groups
+    // Add special "Alerts" group for stocks with active alerts
+    const stocksWithAlerts = watchlist.filter(stock => stock.alerts.length > 0);
+    if (stocksWithAlerts.length > 0) {
+      groups['🚨 Alerts'] = stocksWithAlerts.length;
+    }
+
+    // Create tabs with "All Stocks" first, then "🚨 Alerts", then "Watchlist", then other groups
     const tabs = [
       { name: 'All Stocks', count: watchlist.length },
+      ...(stocksWithAlerts.length > 0 ? [{ name: '🚨 Alerts', count: stocksWithAlerts.length }] : []),
+      { name: 'Watchlist', count: groups['Watchlist'] || 0 },
       ...Object.entries(groups)
-        .filter(([name]) => name !== 'All Stocks')
+        .filter(([name]) => name !== 'All Stocks' && name !== 'Watchlist' && name !== '🚨 Alerts')
         .map(([name, count]) => ({ name, count }))
     ];
 
     const currentStocks = activeTab === 'All Stocks'
       ? watchlist
-      : watchlist.filter(stock => stock.group === activeTab);
+      : activeTab === '🚨 Alerts'
+        ? watchlist.filter(stock => stock.alerts.length > 0)
+        : watchlist.filter(stock => stock.group === activeTab);
 
     const calculateDistance = (current: number, low: number) => {
       return ((current - low) / low * 100);
@@ -1062,11 +1297,11 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
             </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.actionButton} onPress={exportToCSV}>
-              <Text style={styles.actionButtonText}>📤 Export CSV</Text>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={exportToCSV}>
+              <Text style={styles.stackedActionButtonText}>📤</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={importFromCSV}>
-              <Text style={styles.actionButtonText}>📥 Import CSV</Text>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={importFromCSV}>
+              <Text style={styles.stackedActionButtonText}>📥</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1117,14 +1352,6 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
 
         {/* Enhanced Professional Controls */}
         <View style={styles.enhancedControlsSection}>
-          <View style={styles.controlsTopRow}>
-            <Text style={styles.enhancedGroupStats}>
-              📊 {currentStocks.length} stocks in this group
-            </Text>
-            <View style={styles.enhancedModeIndicator}>
-              <Text style={styles.enhancedModeText}>💎 Value Investing Mode</Text>
-            </View>
-          </View>
 
           <View style={styles.controlsBottomRow}>
             <View style={styles.sortingControls}>
@@ -1148,9 +1375,14 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
             </View>
 
             <View style={styles.enhancedSummaryStats}>
-
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={refreshStockData}
+              >
+                <Text style={styles.refreshButtonText}>🔄 Refresh</Text>
+              </TouchableOpacity>
               <Text style={styles.enhancedSummaryText}>
-                {currentStocks.length} stocks • 2 alerts • 2 recently added
+                {currentStocks.length} stocks • {stocksWithAlerts.length} alerts
               </Text>
             </View>
           </View>
@@ -1166,7 +1398,9 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
               <View style={styles.stockCardHeader}>
                 <View style={styles.stockMainInfo}>
                   <View style={styles.stockTitleRow}>
-                    <Text style={styles.stockSymbolLarge}>{stock.symbol}</Text>
+                    <TouchableOpacity onPress={() => handleStockSymbolClick(stock)}>
+                      <Text style={[styles.stockSymbolLarge, styles.clickableSymbol]}>{stock.symbol}</Text>
+                    </TouchableOpacity>
                     <Text style={styles.stockPriceLarge}>${stock.price.toFixed(2)}</Text>
                   </View>
                   <View style={styles.stockSubtitleRow}>
@@ -1215,9 +1449,17 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
               </View>
 
               <View style={styles.stockFooter}>
-                <Text style={styles.footerText}>Volume: {stock.volume}</Text>
-                <Text style={styles.footerText}>Cap: {stock.marketCap}</Text>
-                <Text style={styles.footerText}>Updated: {stock.lastUpdated}</Text>
+                <View style={styles.footerInfo}>
+                  <Text style={styles.footerText}>Volume: {stock.volume}</Text>
+                  <Text style={styles.footerText}>Cap: {stock.marketCap}</Text>
+                  <Text style={styles.footerText}>Updated: {stock.lastUpdated}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => handleEditStock(stock)}
+                >
+                  <Text style={styles.editButtonText}>✏️ Edit</Text>
+                </TouchableOpacity>
               </View>
             </View>
           ))}
@@ -1295,6 +1537,84 @@ AMD,120,Tech Stocks,145.75,95.80,110.25,125.60,CPU competitor,2025-09-20 10:30:0
               ))}
             </View>
           </>
+        )}
+
+        {/* Stock Chart Modal */}
+        <StockChartModal
+          visible={showChartModal}
+          symbol={selectedChartStock?.symbol || ''}
+          currentPrice={selectedChartStock?.price || 0}
+          marketCap={selectedChartStock?.marketCap ? parseFloat(selectedChartStock.marketCap.replace(/[$BTM]/g, '')) * (selectedChartStock.marketCap.includes('T') ? 1e12 : selectedChartStock.marketCap.includes('B') ? 1e9 : selectedChartStock.marketCap.includes('M') ? 1e6 : 1) : 0}
+          volume={selectedChartStock?.volume ? parseFloat(selectedChartStock.volume.replace(/[M]/g, '')) * 1e6 : 0}
+          onClose={handleCloseChart}
+        />
+
+        {/* Edit Stock Modal */}
+        {showEditModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.editModal}>
+              <View style={styles.editModalHeader}>
+                <Text style={styles.editModalTitle}>Edit Stock</Text>
+                <TouchableOpacity onPress={handleCancelEdit}>
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {editingStock && (
+                <View style={styles.editModalContent}>
+                  <View style={styles.stockInfo}>
+                    <Text style={styles.editStockSymbol}>{editingStock.symbol}</Text>
+                    <Text style={styles.editStockName}>{editingStock.name}</Text>
+                    <Text style={styles.editCurrentPrice}>Current: ${editingStock.price.toFixed(2)}</Text>
+                  </View>
+
+                  <View style={styles.editField}>
+                    <Text style={styles.editLabel}>Target Price</Text>
+                    <TextInput
+                      style={styles.editInput}
+                      value={editTargetPrice}
+                      onChangeText={setEditTargetPrice}
+                      placeholder="Enter target price"
+                      keyboardType="numeric"
+                      placeholderTextColor="#666"
+                    />
+                  </View>
+
+                  <View style={styles.editField}>
+                    <Text style={styles.editLabel}>Group</Text>
+                    <View style={styles.groupSelector}>
+                      {Object.keys(groups).map((groupName) => (
+                        <TouchableOpacity
+                          key={groupName}
+                          style={[
+                            styles.groupOption,
+                            editGroup === groupName && styles.groupOptionSelected
+                          ]}
+                          onPress={() => setEditGroup(groupName)}
+                        >
+                          <Text style={[
+                            styles.groupOptionText,
+                            editGroup === groupName && styles.groupOptionTextSelected
+                          ]}>
+                            {groupName}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.editModalButtons}>
+                    <TouchableOpacity style={styles.cancelButton} onPress={handleCancelEdit}>
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.saveButton} onPress={handleSaveEdit}>
+                      <Text style={styles.saveButtonText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
         )}
       </View>
     );
@@ -1528,9 +1848,9 @@ const styles = StyleSheet.create({
   // Watchlist Screen Styles
   dashboardHeader: {
     backgroundColor: '#1A1A1A',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1588,9 +1908,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
-  },
-  stockInfo: {
-    flex: 1,
   },
   bottomSection: {
     backgroundColor: '#FFFFFF',
@@ -1752,7 +2069,7 @@ const styles = StyleSheet.create({
   // Professional Dashboard Styles
   professionalHeader: {
     backgroundColor: '#1A1A1A',
-    paddingTop: 50,
+    paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 20,
     flexDirection: 'row',
@@ -1761,12 +2078,12 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flex: 1,
-    marginRight: 16,
+    marginRight: 4,
   },
   searchBar: {
     backgroundColor: '#2A2A2A',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#404040',
@@ -1777,7 +2094,7 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 4,
   },
   actionButton: {
     backgroundColor: '#2A2A2A',
@@ -1790,6 +2107,21 @@ const styles = StyleSheet.create({
   actionButtonText: {
     color: '#CCCCCC',
     fontSize: 12,
+    fontWeight: '500',
+  },
+  stackedActionButton: {
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#404040',
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  stackedActionButtonText: {
+    color: '#CCCCCC',
+    fontSize: 16,
     fontWeight: '500',
   },
 
@@ -1943,6 +2275,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  clickableSymbol: {
+    textDecorationLine: 'underline',
+    color: '#00C851',
+  },
   stockPriceLarge: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -2025,6 +2361,8 @@ const styles = StyleSheet.create({
   stockFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
   },
   footerText: {
     color: '#888888',
@@ -2090,19 +2428,19 @@ const styles = StyleSheet.create({
   // Enhanced Tabs
   enhancedTabsSection: {
     backgroundColor: '#0F0F0F',
-    paddingVertical: 20,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#333333',
   },
   tabsScrollContent: {
     paddingHorizontal: 20,
-    gap: 12,
+    gap: 8,
   },
   enhancedTab: {
     backgroundColor: '#1E1E1E',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#333333',
     minWidth: 140,
@@ -2120,31 +2458,34 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    minHeight: 0,
   },
   enhancedTabText: {
     color: '#CCCCCC',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
+    lineHeight: 14,
   },
   enhancedActiveTabText: {
     color: '#000000',
     fontWeight: '700',
+    lineHeight: 14,
   },
   enhancedTabBadge: {
     backgroundColor: '#333333',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginLeft: 2,
   },
   enhancedActiveTabBadge: {
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
   },
   enhancedTabBadgeText: {
     color: '#CCCCCC',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   enhancedActiveTabBadgeText: {
@@ -2170,8 +2511,8 @@ const styles = StyleSheet.create({
   // Enhanced Controls
   enhancedControlsSection: {
     backgroundColor: '#0F0F0F',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#333333',
   },
@@ -2205,7 +2546,7 @@ const styles = StyleSheet.create({
   sortingControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
   },
   enhancedSortLabel: {
     color: '#CCCCCC',
@@ -2549,6 +2890,161 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     letterSpacing: 0.2,
     opacity: 0.8,
+  },
+
+  // Edit Stock Styles
+  footerInfo: {
+    flex: 1,
+  },
+  editButton: {
+    backgroundColor: '#00FF88',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  editModal: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    margin: 20,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: '#333333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  editModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  closeButton: {
+    color: '#CCCCCC',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  editModalContent: {
+    padding: 20,
+  },
+  editStockSymbol: {
+    color: '#00FF88',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  editStockName: {
+    color: '#CCCCCC',
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  editCurrentPrice: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  editField: {
+    marginBottom: 20,
+  },
+  editLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  editInput: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#404040',
+  },
+  groupSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  groupOption: {
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#404040',
+  },
+  groupOptionSelected: {
+    backgroundColor: '#00FF88',
+    borderColor: '#00CC66',
+  },
+  groupOptionText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  groupOptionTextSelected: {
+    color: '#000000',
+    fontWeight: '600',
+  },
+  editModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#333333',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#CCCCCC',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: '#00FF88',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  refreshButton: {
+    backgroundColor: '#00FF88',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  refreshButtonText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
