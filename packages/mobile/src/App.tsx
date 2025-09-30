@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, FlatList} from 'react-native';
 // import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorageMock from './utils/AsyncStorageMock';
 import { StockChartModal } from './components/StockChartModal';
+import { StockService } from './services/StockService';
+import { ApiService } from './services/ApiService';
+
+const API_BASE_URL = 'https://finora-backendfinora-api.vercel.app/api';
+
+console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
 
 // Simple historical data service to prevent crashes
 const historicalDataService = {
@@ -40,13 +47,7 @@ const SORTING_OPTIONS = [
 const SafeStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
-      // To enable AsyncStorage, uncomment the lines below and install the package:
-      // npm install @react-native-async-storage/async-storage
-      // const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      // return await AsyncStorage.getItem(key);
-
-      // For now, using memory storage simulation
-      return null;
+      return await AsyncStorageMock.getItem(key);
     } catch (error) {
       console.warn('Storage getItem failed, using fallback:', error);
       return null;
@@ -55,12 +56,8 @@ const SafeStorage = {
 
   async setItem(key: string, value: string): Promise<void> {
     try {
-      // To enable AsyncStorage, uncomment the lines below:
-      // const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      // await AsyncStorage.setItem(key, value);
-
-      // For now, simulating storage
-      console.log('✅ Storage saved (simulated):', key, `${value.length} chars`);
+      await AsyncStorageMock.setItem(key, value);
+      console.log('✅ Storage saved:', key, `${value.length} chars`);
     } catch (error) {
       console.warn('Storage setItem failed, using fallback:', error);
     }
@@ -69,8 +66,17 @@ const SafeStorage = {
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [userType, setUserType] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -86,6 +92,7 @@ const App: React.FC = () => {
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [customGroups, setCustomGroups] = useState<Array<{id: string, name: string, description: string, color: string}>>([]);
   const [showChartModal, setShowChartModal] = useState(false);
   const [selectedChartStock, setSelectedChartStock] = useState<any | null>(null);
   const [editingStock, setEditingStock] = useState<any | null>(null);
@@ -93,14 +100,37 @@ const App: React.FC = () => {
   const [editGroup, setEditGroup] = useState('Watchlist');
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Initialize alerts on component mount
+  // Initialize app and check for stored authentication
   React.useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Check for stored auth token
+        const storedToken = await SafeStorage.getItem('finora_auth_token');
+        if (storedToken) {
+          ApiService.setAuthToken(storedToken);
+          setIsAuthenticated(true);
+          await loadUserGroups();
+        }
+      } catch (error) {
+        console.error('Error initializing app:', error);
+      }
+    };
+
+    initializeApp();
+
     const updatedWatchlist = watchlist.map(stock => ({
       ...stock,
       alerts: updateStockAlerts(stock)
     }));
     setWatchlist(updatedWatchlist);
   }, []); // Only run once on mount
+
+  // Load groups when user becomes authenticated
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      loadUserGroups();
+    }
+  }, [isAuthenticated]);
 
   // Function to handle stock symbol click
   const handleStockSymbolClick = (stock: any) => {
@@ -389,11 +419,16 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log('Finora app started successfully!');
     loadWatchlistFromStorage();
+    loadCustomGroupsFromStorage();
   }, []);
 
   useEffect(() => {
     saveWatchlistToStorage();
   }, [watchlist]);
+
+  useEffect(() => {
+    saveCustomGroupsToStorage();
+  }, [customGroups]);
 
   const loadWatchlistFromStorage = async () => {
     try {
@@ -434,6 +469,26 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.warn('Cloud sync failed, data saved locally:', error);
+    }
+  };
+
+  const loadCustomGroupsFromStorage = async () => {
+    try {
+      const savedGroups = await SafeStorage.getItem('finora_custom_groups');
+      if (savedGroups) {
+        const parsedGroups = JSON.parse(savedGroups);
+        setCustomGroups(parsedGroups);
+      }
+    } catch (error) {
+      console.error('Error loading custom groups:', error);
+    }
+  };
+
+  const saveCustomGroupsToStorage = async () => {
+    try {
+      await SafeStorage.setItem('finora_custom_groups', JSON.stringify(customGroups));
+    } catch (error) {
+      console.error('Error saving custom groups:', error);
     }
   };
 
@@ -739,35 +794,310 @@ const App: React.FC = () => {
     Alert.alert('Import Complete', message);
   };
 
+  // Load user's groups from backend
+  const loadUserGroups = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/portfolio/groups`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ApiService.getAuthToken()}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setCustomGroups(data.data || []);
+      } else {
+        console.error('Failed to load groups:', data.message);
+        // Fallback to local storage
+        await loadCustomGroupsFromStorage();
+      }
+    } catch (error) {
+      console.error('Error loading groups:', error);
+      // Fallback to local storage
+      await loadCustomGroupsFromStorage();
+    }
+  };
+
   // Group Management Functions
-  const addNewGroup = () => {
+  const addNewGroup = async () => {
     if (newGroupName.trim()) {
-      // Group will be created when first stock is added to it
-      setShowAddGroup(false);
-      setNewGroupName('');
-      Alert.alert('Success', `Group "${newGroupName.trim()}" will be created when you add stocks to it.`);
+      try {
+        setIsLoading(true);
+        const authToken = ApiService.getAuthToken();
+
+        if (authToken) {
+          // Try backend first
+          const response = await fetch(`${API_BASE_URL}/portfolio/groups`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+              name: newGroupName.trim(),
+              description: '',
+              color: '#00FF88'
+            })
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            // Add to local groups list
+            setCustomGroups(prev => [...prev, data.data]);
+
+            // Reset form
+            setShowAddGroup(false);
+            setNewGroupName('');
+
+            Alert.alert('Success', `Group "${data.data.name}" created successfully! You can now add stocks to this group.`);
+            return;
+          } else {
+            // Handle specific error cases
+            if (response.status === 401) {
+              Alert.alert('Session Expired', 'Please log in again to continue.');
+              handleLogout();
+              return;
+            }
+            throw new Error(data.message || 'Failed to create group');
+          }
+        }
+
+        // Fallback to local storage if no auth token or backend failed
+        const newGroup = {
+          id: Date.now().toString(),
+          name: newGroupName.trim(),
+          description: '',
+          color: '#00FF88',
+          sortOrder: customGroups.length,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // Add to local groups list
+        const updatedGroups = [...customGroups, newGroup];
+        setCustomGroups(updatedGroups);
+
+        // Save to local storage
+        await SafeStorage.setItem('finora_custom_groups', JSON.stringify(updatedGroups));
+
+        // Reset form
+        setShowAddGroup(false);
+        setNewGroupName('');
+
+        Alert.alert('Success', `Group "${newGroup.name}" created successfully! (Stored locally)`);
+
+      } catch (error) {
+        console.error('Error creating group:', error);
+        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create group. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleLogin = () => {
-    if (email === 'test@finora.com' && password === 'password') {
-      setIsAuthenticated(true);
-      Alert.alert('Success', 'Login successful!');
-    } else {
-      Alert.alert('Error', 'Invalid credentials. Use test@finora.com / password');
+  const handleRegister = async () => {
+    try {
+      // Validate required fields
+      if (!email.trim() || !password || !firstName.trim() || !lastName.trim() ||
+          !organization.trim() || !userType.trim()) {
+        Alert.alert('Error', 'Please fill in all required fields.');
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        Alert.alert('Error', 'Please enter a valid email address.');
+        return;
+      }
+
+      // Validate password strength
+      if (password.length < 8) {
+        Alert.alert('Error', 'Password must be at least 8 characters long.');
+        return;
+      }
+
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
+      if (!passwordRegex.test(password)) {
+        Alert.alert('Error', 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        Alert.alert('Error', 'Passwords do not match.');
+        return;
+      }
+
+      // Validate user type selection
+      if (!userType) {
+        Alert.alert('Error', 'Please select your user type.');
+        return;
+      }
+
+      setIsLoading(true);
+
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          organization: organization.trim(),
+          userType: userType.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        let successMessage = 'Account created successfully!';
+
+        // Check if API key was provided
+        if (data.apiKey) {
+          successMessage += '\n\n🔑 Alpha Vantage API key obtained! You now have access to real-time stock data.';
+          // Store the API key for future use
+          setApiKey(data.apiKey);
+        }
+
+        // Auto-login after successful registration
+        ApiService.setAuthToken(data.token);
+        await SafeStorage.setItem('finora_auth_token', data.token);
+        await SafeStorage.setItem('finora_api_key', data.apiKey);
+        await SafeStorage.setItem('finora_user', JSON.stringify(data.user));
+
+        setIsAuthenticated(true);
+
+        // Load user's groups from backend
+        await loadUserGroups();
+
+        Alert.alert('Welcome to Finora!', `${successMessage}\n\nHello ${data.user.firstName}! You're now logged in.`, [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowRegister(false);
+              // Clear registration form
+              setFirstName('');
+              setLastName('');
+              setConfirmPassword('');
+              setOrganization('');
+              setUserType('');
+            }
+          }
+        ]);
+      } else {
+        Alert.alert('Registration Failed', data.message || 'Failed to create account. Please try again.');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Connection Error', `Unable to connect to server.\n\nError: ${errorMessage}\n\nPlease check your internet connection and try again.`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setEmail('');
-    setPassword('');
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    setSelectedStock(null);
-    setCutoffPrice('');
-    setShares('');
+  const handleLogin = async () => {
+    try {
+      // Validate input
+      if (!email.trim() || !password) {
+        Alert.alert('Error', 'Please enter both email and password.');
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        Alert.alert('Error', 'Please enter a valid email address.');
+        return;
+      }
+
+      setIsLoading(true);
+
+      const loginUrl = `${API_BASE_URL}/auth/login`;
+      const loginPayload = {
+        email: email.trim(),
+        password: password
+      };
+
+      console.log('🔐 Attempting login to:', loginUrl);
+      console.log('📧 Email:', loginPayload.email);
+      console.log('🔑 Password length:', loginPayload.password.length);
+
+      const response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(loginPayload)
+      });
+
+      console.log('📡 Login response status:', response.status);
+
+      const data = await response.json();
+      console.log('📦 Login response data:', JSON.stringify(data));
+
+      if (response.ok && data.success) {
+        // Set the authentication tokens
+        ApiService.setAuthToken(data.token);
+
+        // Store tokens and user info securely
+        await SafeStorage.setItem('finora_auth_token', data.token);
+        await SafeStorage.setItem('finora_api_key', data.apiKey);
+        await SafeStorage.setItem('finora_user', JSON.stringify(data.user));
+
+        setIsAuthenticated(true);
+
+        // Load user's groups from backend
+        await loadUserGroups();
+
+        Alert.alert('Welcome!', `Hello ${data.user.firstName}! You're now logged in.`);
+      } else {
+        Alert.alert('Login Failed', data.message || 'Invalid email or password. Please try again.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Connection Error', `Unable to connect to server.\n\nError: ${errorMessage}\n\nPlease check your internet connection and try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Clear stored authentication
+      await SafeStorage.setItem('finora_auth_token', '');
+      await SafeStorage.setItem('finora_user', '');
+
+      // Clear API service token
+      ApiService.clearAuthToken();
+
+      // Reset app state
+      setIsAuthenticated(false);
+      setEmail('');
+      setPassword('');
+      setShowSearch(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setSelectedStock(null);
+      setCutoffPrice('');
+      setShares('');
+      setCustomGroups([]);
+
+      Alert.alert('Success', 'Logged out successfully!');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still proceed with logout even if storage fails
+      setIsAuthenticated(false);
+    }
   };
 
   // Smart cutoff price calculation
@@ -801,7 +1131,31 @@ const App: React.FC = () => {
 
   // Alpha Vantage API configuration
   // Get your free API key from: https://www.alphavantage.co/support/#api-key
-  const ALPHA_VANTAGE_API_KEY = 'demo'; // Replace with your actual API key
+  // Use stored API key or fallback to demo
+  const ALPHA_VANTAGE_API_KEY = apiKey || 'demo';
+
+  // Fetch real-time stock price from our backend
+  const fetchRealTimePrice = async (symbol: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/stocks/${symbol}?apiKey=${ALPHA_VANTAGE_API_KEY}`);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch stock data');
+      }
+
+      return {
+        symbol: data.data.symbol,
+        price: data.data.price,
+        change: data.data.change,
+        changePercent: data.data.changePercent,
+        lastUpdated: data.data.lastUpdated
+      };
+    } catch (error) {
+      console.error('Error fetching real-time price:', error);
+      return null;
+    }
+  };
 
   // Fetch detailed stock data from Alpha Vantage
   const fetchStockDetails = async (symbol: string) => {
@@ -1198,6 +1552,13 @@ const App: React.FC = () => {
       return acc;
     }, {} as Record<string, number>);
 
+    // Add custom groups (even if they have 0 stocks)
+    customGroups.forEach(group => {
+      if (!groups[group.name]) {
+        groups[group.name] = 0;
+      }
+    });
+
     // Add special "Alerts" group for stocks with active alerts
     const stocksWithAlerts = watchlist.filter(stock => stock.alerts.length > 0);
     if (stocksWithAlerts.length > 0) {
@@ -1286,7 +1647,30 @@ const App: React.FC = () => {
 
     return (
       <View style={styles.dashboardContainer}>
-        {/* Header */}
+        {/* User Info and Actions Bar */}
+        <View style={styles.userBar}>
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>👤 {email || 'User'}</Text>
+          </View>
+          <View style={styles.userActions}>
+            <TouchableOpacity style={styles.userActionButton} onPress={() => Alert.alert('Feedback', 'Send feedback to: support@finora.com\n\nOr rate us on the app store!')}>
+              <Text style={styles.userActionButtonText}>💬</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.userActionButton} onPress={() => {
+              // Refresh the app data
+              loadCustomGroupsFromStorage();
+              loadWatchlistFromStorage();
+              Alert.alert('Refreshed', 'Data refreshed successfully!');
+            }}>
+              <Text style={styles.userActionButtonText}>�</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.userActionButton} onPress={handleLogout}>
+              <Text style={styles.userActionButtonText}>🚪</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Search Header with Import/Export */}
         <View style={styles.dashboardHeader}>
           <View style={styles.searchContainer}>
             <TouchableOpacity
@@ -1622,11 +2006,69 @@ const App: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.loginContainer}>
+      <ScrollView
+        style={styles.loginContainer}
+        contentContainerStyle={styles.loginContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>🎯 Finora</Text>
         <Text style={styles.subtitle}>Smart Stock Watchlist</Text>
 
         <View style={styles.loginForm}>
+          {showRegister && (
+            <>
+              <TextInput
+                style={styles.input}
+                placeholder="First Name *"
+                placeholderTextColor="#9CA3AF"
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Last Name *"
+                placeholderTextColor="#9CA3AF"
+                value={lastName}
+                onChangeText={setLastName}
+                autoCapitalize="words"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Organization/Company *"
+                placeholderTextColor="#9CA3AF"
+                value={organization}
+                onChangeText={setOrganization}
+                autoCapitalize="words"
+              />
+              <View style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>Which of the following best describes you? *</Text>
+                <TouchableOpacity
+                  style={[styles.input, styles.picker]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Select User Type',
+                      'Which of the following best describes you?',
+                      [
+                        { text: 'Investor', onPress: () => setUserType('Investor') },
+                        { text: 'Software Developer', onPress: () => setUserType('Software Developer') },
+                        { text: 'Educator', onPress: () => setUserType('Educator') },
+                        { text: 'Student', onPress: () => setUserType('Student') },
+                        { text: 'Other', onPress: () => setUserType('Other') },
+                        { text: 'Cancel', style: 'cancel' }
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={[styles.pickerText, !userType && styles.placeholderText]}>
+                    {userType || 'Select user type *'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -1644,12 +2086,62 @@ const App: React.FC = () => {
             onChangeText={setPassword}
             secureTextEntry
           />
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Login</Text>
+
+          {showRegister && (
+            <>
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                placeholderTextColor="#9CA3AF"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+              />
+
+            </>
+          )}
+
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={showRegister ? handleRegister : handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? 'Please wait...' : (showRegister ? 'Create Account' : 'Login')}
+            </Text>
           </TouchableOpacity>
-          <Text style={styles.hint}>Use: test@finora.com / password</Text>
+
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => {
+              setShowRegister(!showRegister);
+              // Clear form when switching
+              setFirstName('');
+              setLastName('');
+              setConfirmPassword('');
+              setOrganization('');
+              setUserType('');
+              setEmail('');
+              setPassword('');
+            }}
+          >
+            <Text style={styles.linkText}>
+              {showRegister ? 'Already have an account? Login' : 'Need an account? Sign up'}
+            </Text>
+          </TouchableOpacity>
+
+          {showRegister && (
+            <>
+              <Text style={styles.passwordHint}>
+                Password must be at least 8 characters with uppercase, lowercase, number, and special character.
+              </Text>
+              <Text style={styles.apiKeyHint}>
+                📊 Your account will automatically receive a personal Alpha Vantage API key for real-time stock data access.
+              </Text>
+            </>
+          )}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -1666,8 +2158,12 @@ const styles = StyleSheet.create({
   },
   loginContainer: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: 20,
+  },
+  loginContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 40,
   },
   title: {
     fontSize: 32,
@@ -1701,6 +2197,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     color: '#1F2937',
   },
+  textArea: {
+    height: 80,
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  pickerContainer: {
+    marginBottom: 16,
+  },
+  pickerLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  picker: {
+    justifyContent: 'center',
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  placeholderText: {
+    color: '#9CA3AF',
+  },
   button: {
     backgroundColor: '#059669',
     paddingVertical: 16,
@@ -1713,6 +2233,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  buttonDisabled: {
+    backgroundColor: '#9CA3AF',
+    opacity: 0.6,
+  },
+  linkButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  linkText: {
+    color: '#3B82F6',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  passwordHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 10,
+    paddingHorizontal: 20,
+    lineHeight: 16,
+  },
+  apiKeyHint: {
+    fontSize: 12,
+    color: '#059669',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+    lineHeight: 16,
+    fontWeight: '500',
   },
   hint: {
     fontSize: 14,
@@ -1855,6 +2406,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // User Bar Styles
+  userBar: {
+    backgroundColor: '#2D3748',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#4A5568',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  username: {
+    color: '#E2E8F0',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  userActionButton: {
+    backgroundColor: '#4A5568',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  userActionButtonText: {
+    fontSize: 16,
+    color: '#E2E8F0',
+  },
+
   watchlistStats: {
     backgroundColor: '#F3F4F6',
     padding: 16,
@@ -2078,7 +2667,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flex: 1,
-    marginRight: 4,
+    marginRight: 8,
   },
   searchBar: {
     backgroundColor: '#2A2A2A',
@@ -2983,7 +3572,7 @@ const styles = StyleSheet.create({
   },
   groupOption: {
     backgroundColor: '#2A2A2A',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
