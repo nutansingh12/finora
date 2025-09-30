@@ -323,8 +323,8 @@ export class StockPrice extends BaseModel {
     
     if (prices.length < 2) return 'sideways';
 
-    const recentPrice = prices[0].price;
-    const oldPrice = prices[prices.length - 1].price;
+    const recentPrice = prices[0]?.price ?? 0;
+    const oldPrice = prices[prices.length - 1]?.price ?? 0;
     
     const changePercent = ((recentPrice - oldPrice) / oldPrice) * 100;
     

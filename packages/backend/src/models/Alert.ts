@@ -20,7 +20,7 @@ export class Alert extends BaseModel {
   static async createAlert(data: {
     user_id: string;
     stock_id: string;
-    alert_type: string;
+    alert_type: AlertModel['alert_type'];
     target_price: number;
     message?: string;
     is_active?: boolean;
@@ -58,7 +58,7 @@ export class Alert extends BaseModel {
       .leftJoin('stocks', 'alerts.stock_id', 'stocks.id')
       .leftJoin('stock_prices as sp', function() {
         this.on('sp.stock_id', '=', 'alerts.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('alerts.user_id', userId);
 
@@ -109,7 +109,7 @@ export class Alert extends BaseModel {
   static async updateAlert(
     alertId: string,
     updates: {
-      alert_type?: string;
+      alert_type?: AlertModel['alert_type'];
       target_price?: number;
       message?: string;
       is_active?: boolean;
@@ -219,7 +219,7 @@ export class Alert extends BaseModel {
       .join('stocks', 'alerts.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
         this.on('sp.stock_id', '=', 'alerts.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('alerts.is_active', true)
       .where('stocks.is_active', true);
@@ -229,7 +229,7 @@ export class Alert extends BaseModel {
   static async reactivateAlert(alertId: string): Promise<AlertModel | null> {
     return this.updateById<AlertModel>(alertId, {
       is_active: true,
-      triggered_at: null
+      triggered_at: null as any
     });
   }
 

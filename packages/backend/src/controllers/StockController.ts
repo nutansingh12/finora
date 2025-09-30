@@ -1,18 +1,18 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
-import { Stock } from '@/models/Stock';
-import { UserStock } from '@/models/UserStock';
-import { StockPrice } from '@/models/StockPrice';
-import { RollingAnalysis } from '@/models/RollingAnalysis';
-import { YahooFinanceService } from '@/services/YahooFinanceService';
-import { StockPriceService } from '@/services/StockPriceService';
+import { Stock } from '../models/Stock';
+import { UserStock } from '../models/UserStock';
+import { StockPrice } from '../models/StockPrice';
+import { RollingAnalysis } from '../models/RollingAnalysis';
+import { YahooFinanceService } from '../services/YahooFinanceService';
+import { StockPriceService } from '../services/StockPriceService';
 
 export class StockController {
   private static yahooFinanceService = new YahooFinanceService();
   private static stockPriceService = new StockPriceService();
 
   // Get user's stocks
-  static async getUserStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async getUserStocks(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { groupId, sortBy, sortOrder, limit, offset } = req.query;
@@ -48,7 +48,7 @@ export class StockController {
   }
 
   // Add stock to user's portfolio
-  static async addUserStock(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async addUserStock(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { symbol, targetPrice, cutoffPrice, groupId, notes } = req.body;
@@ -134,7 +134,7 @@ export class StockController {
   }
 
   // Update user stock
-  static async updateUserStock(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async updateUserStock(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { stockId } = req.params;
@@ -184,7 +184,7 @@ export class StockController {
   }
 
   // Remove stock from user's portfolio
-  static async removeUserStock(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async removeUserStock(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { stockId } = req.params;
@@ -227,7 +227,7 @@ export class StockController {
   }
 
   // Get stock details
-  static async getStockDetails(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async getStockDetails(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const { stockId } = req.params;
       const userId = req.user?.id;
@@ -285,7 +285,7 @@ export class StockController {
   }
 
   // Get recently added stocks
-  static async getRecentlyAddedStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async getRecentlyAddedStocks(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
 
@@ -312,7 +312,7 @@ export class StockController {
   }
 
   // Bulk update stocks
-  static async bulkUpdateStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async bulkUpdateStocks(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { stockIds, updates } = req.body;
@@ -348,7 +348,7 @@ export class StockController {
   }
 
   // Get portfolio statistics
-  static async getPortfolioStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async getPortfolioStats(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
 
@@ -375,7 +375,7 @@ export class StockController {
   }
 
   // Search user's stocks
-  static async searchUserStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
+  static async searchUserStocks(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
     try {
       const userId = req.user?.id;
       const { q: searchTerm, limit } = req.query;

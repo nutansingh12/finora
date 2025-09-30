@@ -2,7 +2,7 @@ import { BaseModel } from '../models/BaseModel';
 import { RollingAnalysis } from '../models/RollingAnalysis';
 import { StockPrice } from '../models/StockPrice';
 import { UserStock } from '../models/UserStock';
-import { HistoricalData } from '../models/HistoricalData';
+// import removed: HistoricalData not used; using StockPrice instead
 
 export interface PortfolioAnalytics {
   totalValue: number;
@@ -73,9 +73,7 @@ export interface TrendAnalysis {
 export class AnalyticsService {
   // Calculate comprehensive portfolio analytics
   static async calculatePortfolioAnalytics(userId: string): Promise<PortfolioAnalytics> {
-    const userStocks = await UserStock.getUserStocks(userId, {
-      includeInactive: false
-    });
+    const userStocks = await UserStock.getUserStocks(userId);
 
     let totalValue = 0;
     let totalChange = 0;
@@ -244,14 +242,14 @@ export class AnalyticsService {
     period: '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' = '1M'
   ): Promise<TrendAnalysis> {
     const days = this.getPeriodDays(period);
-    const historicalData = await HistoricalData.getHistoricalData(stockId, days);
+    const historical = await StockPrice.getHistoricalPrices(stockId, days);
 
-    if (historicalData.length < 20) {
+    if (historical.length < 20) {
       throw new Error('Insufficient data for trend analysis');
     }
 
-    const prices = historicalData.map(d => d.close);
-    const volumes = historicalData.map(d => d.volume);
+    const prices = historical.map((d: any) => d.price);
+    const volumes = historical.map((d: any) => d.volume);
 
     // Calculate technical indicators
     const sma20 = this.calculateSMA(prices, 20);
@@ -277,11 +275,11 @@ export class AnalyticsService {
       support,
       resistance,
       momentum,
-      rsi: rsi[rsi.length - 1],
+      rsi: rsi[rsi.length - 1] ?? 0,
       macd: {
-        signal: macd.signal[macd.signal.length - 1],
-        histogram: macd.histogram[macd.histogram.length - 1],
-        line: macd.line[macd.line.length - 1]
+        signal: macd.signal[macd.signal.length - 1] ?? 0,
+        histogram: macd.histogram[macd.histogram.length - 1] ?? 0,
+        line: macd.line[macd.line.length - 1] ?? 0
       }
     };
   }
@@ -302,7 +300,7 @@ export class AnalyticsService {
     const losses: number[] = [];
     
     for (let i = 1; i < prices.length; i++) {
-      const change = prices[i] - prices[i - 1];
+      const change = (prices[i] ?? 0) - (prices[i - 1] ?? 0);
       gains.push(change > 0 ? change : 0);
       losses.push(change < 0 ? Math.abs(change) : 0);
     }
@@ -312,8 +310,8 @@ export class AnalyticsService {
     let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
 
     for (let i = period; i < gains.length; i++) {
-      avgGain = (avgGain * (period - 1) + gains[i]) / period;
-      avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+      avgGain = (avgGain * (period - 1) + (gains[i] ?? 0)) / period;
+      avgLoss = (avgLoss * (period - 1) + (losses[i] ?? 0)) / period;
       
       const rs = avgGain / avgLoss;
       rsi.push(100 - (100 / (1 + rs)));
@@ -333,14 +331,14 @@ export class AnalyticsService {
     
     const macdLine: number[] = [];
     for (let i = 0; i < Math.min(ema12.length, ema26.length); i++) {
-      macdLine.push(ema12[i] - ema26[i]);
+      macdLine.push((ema12[i] ?? 0) - (ema26[i] ?? 0));
     }
     
     const signalLine = this.calculateEMA(macdLine, 9);
     const histogram: number[] = [];
     
     for (let i = 0; i < Math.min(macdLine.length, signalLine.length); i++) {
-      histogram.push(macdLine[i] - signalLine[i]);
+      histogram.push((macdLine[i] ?? 0) - (signalLine[i] ?? 0));
     }
 
     return {
@@ -353,10 +351,10 @@ export class AnalyticsService {
   // Calculate EMA (Exponential Moving Average)
   private static calculateEMA(prices: number[], period: number): number[] {
     const multiplier = 2 / (period + 1);
-    const ema: number[] = [prices[0]];
+    const ema: number[] = [prices[0] ?? 0];
     
     for (let i = 1; i < prices.length; i++) {
-      ema.push((prices[i] * multiplier) + (ema[i - 1] * (1 - multiplier)));
+      ema.push(((prices[i] ?? 0) * multiplier) + ((ema[i - 1] ?? 0) * (1 - multiplier)));
     }
     
     return ema;
@@ -383,9 +381,9 @@ export class AnalyticsService {
     const latestSMA20 = sma20[sma20.length - 1];
     const latestSMA50 = sma50[sma50.length - 1];
     
-    if (currentPrice > latestSMA20 && latestSMA20 > latestSMA50) {
+    if ((currentPrice ?? 0) > (latestSMA20 ?? 0) && (latestSMA20 ?? 0) > (latestSMA50 ?? 0)) {
       return 'bullish';
-    } else if (currentPrice < latestSMA20 && latestSMA20 < latestSMA50) {
+    } else if ((currentPrice ?? 0) < (latestSMA20 ?? 0) && (latestSMA20 ?? 0) < (latestSMA50 ?? 0)) {
       return 'bearish';
     }
     return 'neutral';
@@ -401,8 +399,8 @@ export class AnalyticsService {
     const latestSMA20 = sma20[sma20.length - 1];
     const latestSMA50 = sma50[sma50.length - 1];
     
-    const deviation20 = Math.abs((currentPrice - latestSMA20) / latestSMA20) * 100;
-    const deviation50 = Math.abs((currentPrice - latestSMA50) / latestSMA50) * 100;
+    const deviation20 = Math.abs(((currentPrice ?? 0) - (latestSMA20 ?? 0)) / (latestSMA20 || 1)) * 100;
+    const deviation50 = Math.abs(((currentPrice ?? 0) - (latestSMA50 ?? 0)) / (latestSMA50 || 1)) * 100;
     
     return Math.min(100, (deviation20 + deviation50) * 2);
   }
@@ -411,20 +409,21 @@ export class AnalyticsService {
     support: number;
     resistance: number;
   } {
-    const sortedPrices = [...prices].sort((a, b) => a - b);
-    const support = sortedPrices[Math.floor(sortedPrices.length * 0.1)];
-    const resistance = sortedPrices[Math.floor(sortedPrices.length * 0.9)];
-    
+    const sortedPrices = [...prices].sort((a, b) => (a ?? 0) - (b ?? 0));
+    const support = sortedPrices[Math.floor(sortedPrices.length * 0.1)] ?? 0;
+    const resistance = sortedPrices[Math.floor(sortedPrices.length * 0.9)] ?? 0;
+
     return { support, resistance };
   }
 
   private static calculateMomentum(prices: number[], period: number): number {
     if (prices.length < period + 1) return 0;
     
-    const current = prices[prices.length - 1];
-    const previous = prices[prices.length - 1 - period];
-    
-    return ((current - previous) / previous) * 100;
+    const current = prices[prices.length - 1] ?? 0;
+    const previous = prices[prices.length - 1 - period] ?? 0;
+    if (previous === 0) return 0;
+
+    return ((current - previous) / (previous || 1)) * 100;
   }
 
   private static async calculateRiskMetrics(userId: string): Promise<{

@@ -47,7 +47,7 @@ export class StockPriceService {
         return;
       }
 
-      const currentPrice = prices[0].price;
+      const currentPrice = prices[0]?.price ?? 0;
       
       // Calculate rolling lows
       const fiftyTwoWeekLow = this.calculateRollingLow(prices, 365);
@@ -160,8 +160,8 @@ export class StockPriceService {
         return null;
       }
 
-      const currentPrice = prices[0].price;
-      const pastPrice = prices[prices.length - 1].price;
+      const currentPrice = prices[0]?.price ?? 0;
+      const pastPrice = prices[prices.length - 1]?.price ?? 0;
       
       const change = currentPrice - pastPrice;
       const changePercent = (change / pastPrice) * 100;
@@ -205,7 +205,7 @@ export class StockPriceService {
     // Calculate daily returns
     const returns: number[] = [];
     for (let i = 1; i < prices.length; i++) {
-      const dailyReturn = (prices[i - 1].price - prices[i].price) / prices[i].price;
+      const dailyReturn = ((prices[i - 1]?.price ?? 0) - (prices[i]?.price ?? 0)) / ((prices[i]?.price ?? 1));
       returns.push(dailyReturn);
     }
 
@@ -227,7 +227,7 @@ export class StockPriceService {
     
     for (let i = 0; i < n; i++) {
       const x = i;
-      const y = recentPrices[i].price;
+      const y = recentPrices[i]?.price ?? 0;
       
       sumX += x;
       sumY += y;
@@ -274,7 +274,7 @@ export class StockPriceService {
         return null;
       }
 
-      const currentPrice = prices[0].price;
+      const currentPrice = prices[0]?.price ?? 0;
       const dayPrices = prices.slice(0, 1);
       const weekPrices = prices.slice(0, 7);
       const monthPrices = prices.slice(0, 30);

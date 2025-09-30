@@ -6,7 +6,7 @@ export class SearchController {
   private static yahooFinanceService = new YahooFinanceService();
 
   // Search stocks with autocomplete
-  static async searchStocks(req: Request, res: Response) {
+  static async searchStocks(req: Request, res: Response): Promise<any> {
     try {
       const { q: query, limit = 10 } = req.query;
 
@@ -55,7 +55,7 @@ export class SearchController {
   }
 
   // Get stock quote
-  static async getStockQuote(req: Request, res: Response) {
+  static async getStockQuote(req: Request, res: Response): Promise<any> {
     try {
       const { symbol } = req.params;
 
@@ -135,7 +135,7 @@ export class SearchController {
   }
 
   // Get multiple stock quotes
-  static async getMultipleQuotes(req: Request, res: Response) {
+  static async getMultipleQuotes(req: Request, res: Response): Promise<any> {
     try {
       const { symbols } = req.body;
 
@@ -180,7 +180,7 @@ export class SearchController {
   }
 
   // Get trending stocks
-  static async getTrendingStocks(req: Request, res: Response) {
+  static async getTrendingStocks(req: Request, res: Response): Promise<any> {
     try {
       const { limit = 20 } = req.query;
       const searchLimit = Math.min(parseInt(limit as string) || 20, 50);
@@ -202,7 +202,7 @@ export class SearchController {
   }
 
   // Get popular stocks by sector
-  static async getPopularStocksBySector(req: Request, res: Response) {
+  static async getPopularStocksBySector(req: Request, res: Response): Promise<any> {
     try {
       const { sector, limit = 10 } = req.query;
 
@@ -235,7 +235,7 @@ export class SearchController {
   }
 
   // Get stock suggestions based on user's portfolio
-  static async getStockSuggestions(req: Request, res: Response) {
+  static async getStockSuggestions(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { limit = 10 } = req.query;

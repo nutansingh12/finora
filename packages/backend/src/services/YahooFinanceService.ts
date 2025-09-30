@@ -274,15 +274,22 @@ export class YahooFinanceService {
       const historicalData: YahooHistoricalData[] = [];
 
       for (let i = 0; i < timestamps.length; i++) {
-        if (quote.open[i] !== null && quote.close[i] !== null) {
+        const t = timestamps?.[i] ?? 0;
+        const open = quote.open?.[i] ?? null;
+        const high = quote.high?.[i] ?? null;
+        const low = quote.low?.[i] ?? null;
+        const close = quote.close?.[i] ?? null;
+        const volume = quote.volume?.[i] ?? 0;
+        const adj = adjClose?.[i] ?? close;
+        if (open !== null && close !== null) {
           historicalData.push({
-            date: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
-            open: quote.open[i],
-            high: quote.high[i],
-            low: quote.low[i],
-            close: quote.close[i],
-            volume: quote.volume[i] || 0,
-            adjClose: adjClose?.[i] || quote.close[i]
+            date: new Date(t * 1000).toISOString().split('T')[0] as string,
+            open: open as number,
+            high: (high as number) ?? (close as number),
+            low: (low as number) ?? (close as number),
+            close: close as number,
+            volume: volume,
+            adjClose: adj as number
           });
         }
       }

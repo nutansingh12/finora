@@ -2,9 +2,12 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
 import { AlphaVantageService } from '../services/AlphaVantageService';
 import { validationResult } from 'express-validator';
+import { YahooFinanceIntegrationService } from '../services/YahooFinanceIntegrationService';
 
 export class MarketDataController {
   private static alphaVantageService = new AlphaVantageService();
+  private static integrationService = new YahooFinanceIntegrationService();
+
 
   // Get comprehensive stock data
   static async getStockData(req: Request, res: Response): Promise<void> {
@@ -20,7 +23,7 @@ export class MarketDataController {
       }
 
       const { symbol } = req.params;
-      
+
       if (!symbol) {
         res.status(400).json({
           success: false,
@@ -30,7 +33,7 @@ export class MarketDataController {
       }
 
       const stockData = await MarketDataController.alphaVantageService.getStockQuote(symbol.toUpperCase());
-      
+
       if (!stockData) {
         res.status(404).json({
           success: false,
@@ -118,7 +121,7 @@ export class MarketDataController {
   static async getTrendingStocks(req: Request, res: Response): Promise<void> {
     try {
       const { region = 'US' } = req.query;
-      
+
       const trendingStocks = await MarketDataController.integrationService.getTrendingStocks(region as string);
 
       res.json({
@@ -218,7 +221,7 @@ export class MarketDataController {
   static async getExchangeRates(req: Request, res: Response): Promise<void> {
     try {
       const { base = 'USD' } = req.query;
-      
+
       const exchangeRates = await MarketDataController.integrationService.getExchangeRates(base as string);
 
       res.json({

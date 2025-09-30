@@ -18,7 +18,7 @@ export class FeedbackService {
 
   constructor() {
     // Initialize email transporter
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
       secure: config.email.port === 465,

@@ -1,5 +1,14 @@
 import { BaseModel } from './BaseModel';
-import { UserPreferences } from '../../../../shared/types';
+// Minimal local definition to avoid cross-package import issues during build
+export type UserPreferences = {
+  defaultTargetPriceStrategy: string;
+  alertsEnabled: boolean;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  theme: 'light' | 'dark' | 'auto' | string;
+  currency: string;
+  timezone: string;
+};
 
 export interface UserModel {
   id: string;

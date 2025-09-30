@@ -106,7 +106,7 @@ export class YahooFinanceIntegrationService {
    * Batch update stock prices for multiple symbols
    */
   async batchUpdateStockPrices(symbols: string[]): Promise<{ success: string[]; failed: string[] }> {
-    const results = { success: [], failed: [] };
+    const results: { success: string[]; failed: string[] } = { success: [], failed: [] };
     
     try {
       // Process in batches to avoid rate limiting
@@ -231,7 +231,7 @@ export class YahooFinanceIntegrationService {
    * Validate multiple stock symbols
    */
   async validateSymbols(symbols: string[]): Promise<{ valid: string[]; invalid: string[] }> {
-    const results = { valid: [], invalid: [] };
+    const results: { valid: string[]; invalid: string[] } = { valid: [], invalid: [] };
     
     for (const symbol of symbols) {
       try {
