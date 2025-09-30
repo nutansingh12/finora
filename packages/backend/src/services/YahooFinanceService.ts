@@ -61,7 +61,8 @@ export interface YahooSearchResult {
 
 export class YahooFinanceService {
   private client: AxiosInstance;
-  private baseUrl = config.yahooFinance.baseUrl;
+  // Be defensive: optional chain to avoid type mismatches during build
+  private baseUrl = ((config as any)?.yahooFinance?.baseUrl as string) || 'https://query1.finance.yahoo.com';
   private requestDelay = 200; // 200ms delay between requests for better rate limiting
   private requestCount: number = 0;
   private requestWindow: number = 60000; // 1 minute window
@@ -72,7 +73,8 @@ export class YahooFinanceService {
 
   constructor() {
     // Check if commercial API key is available
-    const useCommercialAPI = !!config.yahooFinance.apiKey;
+    const commercialApiKey = ((config as any)?.yahooFinance?.apiKey as string) || process.env.YAHOO_FINANCE_API_KEY || '';
+    const useCommercialAPI = !!commercialApiKey;
 
     // Set base URL based on API type
     const baseURL = useCommercialAPI
@@ -80,8 +82,8 @@ export class YahooFinanceService {
       : this.baseUrl;
 
     // Set headers based on API type
-    const headers = useCommercialAPI ? {
-      'X-RapidAPI-Key': config.yahooFinance.apiKey,
+    const headers: Record<string, string> = useCommercialAPI ? {
+      'X-RapidAPI-Key': commercialApiKey,
       'X-RapidAPI-Host': 'yahoo-finance1.p.rapidapi.com',
       'Accept': 'application/json',
       'Content-Type': 'application/json'

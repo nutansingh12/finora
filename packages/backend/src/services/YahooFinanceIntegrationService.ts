@@ -231,8 +231,8 @@ export class YahooFinanceIntegrationService {
    * Validate multiple stock symbols
    */
   async validateSymbols(symbols: string[]): Promise<{ valid: string[]; invalid: string[] }> {
-    const results: { valid: string[]; invalid: string[] } = { valid: [], invalid: [] };
-    
+    const results: { valid: string[]; invalid: string[] } = { valid: [] as string[], invalid: [] as string[] };
+
     for (const symbol of symbols) {
       try {
         const isValid = await this.yahooService.validateSymbol(symbol);
