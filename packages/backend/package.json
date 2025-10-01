@@ -44,6 +44,7 @@
     "puppeteer": "^24.22.1",
     "redis": "^4.6.7",
     "socket.io": "^4.8.1",
+    "tsconfig-paths": "^3.15.0",
     "uuid": "^9.0.0",
     "ws": "^8.13.0"
   },
