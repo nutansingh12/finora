@@ -32,6 +32,13 @@ function buildTypescript() {
   // Rewrite TS path aliases (e.g. @/...) in emitted JS to relative paths so Node/NCC can resolve them
   console.log('> Rewriting TS path aliases (npx tsc-alias)');
   execSync('npx --yes tsc-alias -p tsconfig.json', { stdio: 'inherit' });
+  // Guard: fail build if any unresolved "@/" aliases remain in dist
+  const leftover = execSync('grep -R "@/" dist || true').toString().trim();
+  if (leftover) {
+    console.error('> Alias rewrite check failed. Unresolved imports found:');
+    console.error(leftover);
+    throw new Error('Alias rewrite incomplete: "@/" imports remain in dist');
+  }
 }
 
 function emitHealthFunction() {
