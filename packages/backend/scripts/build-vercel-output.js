@@ -55,17 +55,16 @@ function emitIndexFunction() {
   const funcBase = path.join(functionsDir, 'api', 'index.func');
   ensureDir(funcBase);
 
-  // __dirname at runtime will be <project>/.vercel/output/functions/api/index.func
-  // dist/index.js is located at <project>/dist/index.js
-  // So the relative path to dist is '../../../../../dist/index.js'
+  // Bundle the Express app and its deps into a single handler using @vercel/ncc
+  const tmpDir = path.join(root, '.vercel', 'tmp');
+  ensureDir(tmpDir);
+  const tmpEntry = path.join(tmpDir, 'index-entry.js');
   writeFile(
-    path.join(funcBase, 'index.js'),
-    `const path = require('path');
-const app = require(path.resolve(__dirname, '../../../../../dist/index.js')).default;
-module.exports = function handler(req, res) {
-  return app(req, res);
-};\n`
+    tmpEntry,
+    `const app = require('../../dist/index.js').default;\nmodule.exports = (req, res) => app(req, res);\n`
   );
+  // Build with ncc into the function directory
+  execSync(`npx --yes @vercel/ncc build ${JSON.stringify(tmpEntry)} -o ${JSON.stringify(funcBase)} -m`, { stdio: 'inherit' });
 
   writeJSON(path.join(funcBase, '.vc-config.json'), {
     runtime: 'nodejs18.x',
