@@ -1,3 +1,7 @@
 import app from '../src/index';
-export default app;
+
+// Export a handler function for @vercel/node
+export default function handler(req: any, res: any) {
+  return (app as any)(req, res);
+}
 
