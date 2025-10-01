@@ -64,10 +64,9 @@ export class AlphaVantageService {
 
   constructor() {
     // Initialize key pool
-    this.keyPool = [
-      config.alphaVantage.apiKey,
-      ...config.alphaVantage.keyPool
-    ].filter(key => key && key.trim() && key !== 'your_primary_alpha_vantage_key_here');
+    const keys = [config.alphaVantage.apiKey, ...config.alphaVantage.keyPool] as Array<string | undefined>;
+    this.keyPool = keys
+      .filter((key): key is string => !!key && key.trim() !== '' && key !== 'your_primary_alpha_vantage_key_here');
 
     console.log(`🔑 Alpha Vantage Service initialized with ${this.keyPool.length} API keys`);
     
@@ -174,13 +173,13 @@ export class AlphaVantageService {
       console.warn('⚠️ All API keys are rate limited, using least recently used key');
       const sortedKeys = Array.from(this.keyUsage.entries())
         .sort((a, b) => a[1].lastRequestTime - b[1].lastRequestTime);
-      bestKey = sortedKeys[0][0];
+      bestKey = (sortedKeys[0]?.[0] ?? this.keyPool[0] ?? config.alphaVantage.apiKey ?? '') as string;
       
       // Add delay to respect rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    return bestKey;
+    return (bestKey ?? this.keyPool[0] ?? config.alphaVantage.apiKey ?? '');
   }
 
   // Track API Key Usage

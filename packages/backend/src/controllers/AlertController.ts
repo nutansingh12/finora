@@ -4,7 +4,7 @@ import { AlertService } from '@/services/AlertService';
 
 export class AlertController {
   // Get user's alerts
-  static async getUserAlerts(req: Request, res: Response) {
+  static async getUserAlerts(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { activeOnly, stockId, alertType, limit, offset } = req.query;
@@ -40,7 +40,7 @@ export class AlertController {
   }
 
   // Create new alert
-  static async createAlert(req: Request, res: Response) {
+  static async createAlert(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { stockId, alertType, targetPrice, message } = req.body;
@@ -101,7 +101,7 @@ export class AlertController {
   }
 
   // Update alert
-  static async updateAlert(req: Request, res: Response) {
+  static async updateAlert(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { alertId } = req.params;
@@ -158,7 +158,7 @@ export class AlertController {
         updates.is_active = Boolean(isActive);
       }
 
-      const updatedAlert = await Alert.updateById(alertId, updates);
+      const updatedAlert = await Alert.updateById(alertId as string, updates);
 
       res.json({
         success: true,
@@ -175,7 +175,7 @@ export class AlertController {
   }
 
   // Delete alert
-  static async deleteAlert(req: Request, res: Response) {
+  static async deleteAlert(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { alertId } = req.params;
@@ -200,7 +200,7 @@ export class AlertController {
         });
       }
 
-      await Alert.deleteById(alertId);
+      await Alert.deleteById(alertId as string);
 
       res.json({
         success: true,
@@ -216,7 +216,7 @@ export class AlertController {
   }
 
   // Bulk delete alerts
-  static async bulkDeleteAlerts(req: Request, res: Response) {
+  static async bulkDeleteAlerts(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { alertIds } = req.body;
@@ -252,7 +252,7 @@ export class AlertController {
   }
 
   // Get alert statistics
-  static async getAlertStats(req: Request, res: Response) {
+  static async getAlertStats(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
 
@@ -279,7 +279,7 @@ export class AlertController {
   }
 
   // Check user alerts manually
-  static async checkUserAlerts(req: Request, res: Response) {
+  static async checkUserAlerts(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
 
@@ -307,7 +307,7 @@ export class AlertController {
   }
 
   // Toggle alert status
-  static async toggleAlertStatus(req: Request, res: Response) {
+  static async toggleAlertStatus(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { alertId } = req.params;
@@ -332,13 +332,13 @@ export class AlertController {
         });
       }
 
-      const updatedAlert = await Alert.updateById(alertId, {
+      const updatedAlert = await Alert.updateById(alertId as string, {
         is_active: !existingAlert.is_active
       });
 
       res.json({
         success: true,
-        message: `Alert ${updatedAlert.is_active ? 'activated' : 'deactivated'} successfully`,
+        message: `Alert ${(updatedAlert && updatedAlert.is_active) ? 'activated' : 'deactivated'} successfully`,
         data: { alert: updatedAlert }
       });
     } catch (error) {
@@ -351,7 +351,7 @@ export class AlertController {
   }
 
   // Get alerts for a specific stock
-  static async getStockAlerts(req: Request, res: Response) {
+  static async getStockAlerts(req: Request, res: Response): Promise<any> {
     try {
       const userId = req.user?.id;
       const { stockId } = req.params;

@@ -38,7 +38,7 @@ export class Stock extends BaseModel {
     limit: number = 20
   ): Promise<StockModel[]> {
     const term = searchTerm.toLowerCase();
-    
+
     return this.db(this.tableName)
       .where('is_active', true)
       .where(function() {
@@ -46,7 +46,7 @@ export class Stock extends BaseModel {
           .orWhere('name', 'ilike', `%${term}%`);
       })
       .orderByRaw(`
-        CASE 
+        CASE
           WHEN LOWER(symbol) = ? THEN 1
           WHEN LOWER(symbol) LIKE ? THEN 2
           WHEN LOWER(name) LIKE ? THEN 3
@@ -71,7 +71,7 @@ export class Stock extends BaseModel {
     website?: string;
   }): Promise<StockModel> {
     const existingStock = await this.findBySymbol(stockData.symbol);
-    
+
     const stockInfo = {
       ...stockData,
       symbol: stockData.symbol.toUpperCase(),
@@ -112,7 +112,7 @@ export class Stock extends BaseModel {
   // Get stocks with recent price updates
   static async getStocksWithRecentPrices(hours: number = 24): Promise<StockModel[]> {
     const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
-    
+
     return this.db(this.tableName)
       .select('stocks.*')
       .join('stock_prices', 'stocks.id', 'stock_prices.stock_id')
@@ -168,18 +168,21 @@ export class Stock extends BaseModel {
     return {
       total,
       active,
-      byType: byType.reduce((acc, item) => {
-        acc[item.type] = parseInt(item.count as string);
+      byType: byType.reduce<Record<string, number>>((acc, item) => {
+        const key = (item.type as string) || 'unknown';
+        acc[key] = parseInt(String(item.count));
         return acc;
-      }, {} as Record<string, number>),
-      bySector: bySector.reduce((acc, item) => {
-        acc[item.sector] = parseInt(item.count as string);
+      }, {}),
+      bySector: bySector.reduce<Record<string, number>>((acc, item) => {
+        const key = (item.sector as string) || 'Unknown';
+        acc[key] = parseInt(String(item.count));
         return acc;
-      }, {} as Record<string, number>),
-      byExchange: byExchange.reduce((acc, item) => {
-        acc[item.exchange] = parseInt(item.count as string);
+      }, {}),
+      byExchange: byExchange.reduce<Record<string, number>>((acc, item) => {
+        const key = (item.exchange as string) || 'Unknown';
+        acc[key] = parseInt(String(item.count));
         return acc;
-      }, {} as Record<string, number>)
+      }, {})
     };
   }
 
@@ -198,4 +201,57 @@ export class Stock extends BaseModel {
       }
     });
   }
+
+  // Create stock (minimal fields); ensures symbol is uppercase and active
+  static async createStock(data: {
+    symbol: string;
+    name: string;
+    exchange: string;
+    sector?: string;
+    industry?: string;
+    type?: 'stock' | 'etf' | 'mutual_fund';
+  }): Promise<StockModel> {
+    return this.create<StockModel>({
+      symbol: data.symbol.toUpperCase(),
+      name: data.name,
+      exchange: data.exchange,
+      type: data.type || 'stock',
+      sector: data.sector,
+      industry: data.industry,
+      currency: 'USD',
+      country: 'US',
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    } as any);
+  }
+
+  // Popular stocks by sector based on how many users track them
+  static async getPopularStocksBySector(sector: string, limit: number = 10): Promise<StockModel[]> {
+    return this.db(this.tableName)
+      .select('stocks.*')
+      .leftJoin('user_stocks', 'stocks.id', 'user_stocks.stock_id')
+      .where('stocks.is_active', true)
+      .andWhere('stocks.sector', sector)
+      .groupBy('stocks.id')
+      .orderByRaw('COUNT(user_stocks.id) DESC')
+      .limit(limit);
+  }
+
+  // Simple suggestions: popular stocks the user doesn't already track
+  static async getStockSuggestions(userId: string, limit: number = 10): Promise<StockModel[]> {
+    const subquery = this.db('user_stocks')
+      .select('stock_id')
+      .where('user_id', userId);
+
+    return this.db(this.tableName)
+      .select('stocks.*')
+      .leftJoin('user_stocks', 'stocks.id', 'user_stocks.stock_id')
+      .where('stocks.is_active', true)
+      .whereNotIn('stocks.id', subquery)
+      .groupBy('stocks.id')
+      .orderByRaw('COUNT(user_stocks.id) DESC')
+      .limit(limit);
+  }
+
 }

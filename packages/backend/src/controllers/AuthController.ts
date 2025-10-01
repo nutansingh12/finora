@@ -14,7 +14,7 @@ export class AuthController {
   // Register new user
   static async register(req: Request, res: Response): Promise<void> {
     try {
-      const { email, password, firstName, lastName } = req.body;
+      const { email, password, firstName, lastName, organization, userType, jobTitle, country, intendedUsage } = req.body;
 
       // Validate input
       if (!validateEmail(email)) {
@@ -76,7 +76,18 @@ export class AuthController {
         try {
           console.log(`🔑 Auto-registering Alpha Vantage API key for user: ${user.email}`);
           const registrationService = new AlphaVantageRegistrationService();
-          const apiKeyResult = await registrationService.requestApiKeyForUser(user);
+
+          // Create enhanced user object with Alpha Vantage registration data
+          const userWithAlphaVantageData = {
+            ...user,
+            organization: organization || 'Individual Investor',
+            userType: userType || 'Investor',
+            jobTitle,
+            country,
+            intendedUsage,
+          };
+
+          const apiKeyResult = await registrationService.requestApiKeyForUser(userWithAlphaVantageData);
 
           if (apiKeyResult.success && apiKeyResult.apiKey) {
             // Store the API key in database
@@ -91,7 +102,10 @@ export class AuthController {
                 registrationId: apiKeyResult.registrationId,
                 metadata: {
                   autoRegistered: true,
-                  registrationDate: new Date().toISOString()
+                  registrationDate: new Date().toISOString(),
+                  jobTitle,
+                  country,
+                  intendedUsage,
                 }
               }
             );

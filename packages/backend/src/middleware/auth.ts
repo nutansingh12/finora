@@ -19,10 +19,10 @@ export const authenticateToken = async (
     }
 
     const decoded = jwt.verify(token, config.jwt.secret) as any;
-    
+
     // Get user from database to ensure they still exist and are active
     const user = await User.findById(decoded.userId);
-    
+
     if (!user || !user.is_active) {
       throw new CustomError('Invalid or expired token', 401);
     }
@@ -57,7 +57,7 @@ export const optionalAuth = async (
     if (token) {
       const decoded = jwt.verify(token, config.jwt.secret) as any;
       const user = await User.findById(decoded.userId);
-      
+
       if (user && user.is_active) {
         req.user = {
           id: user.id,
@@ -74,3 +74,7 @@ export const optionalAuth = async (
     next();
   }
 };
+
+
+// Backwards-compatible alias expected by some routes
+export const authMiddleware = authenticateToken;

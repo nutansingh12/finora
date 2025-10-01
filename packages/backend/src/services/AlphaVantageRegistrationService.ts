@@ -7,9 +7,10 @@ export interface ApiKeyRegistrationData {
   lastName: string;
   email: string;
   organization: string;
-  jobTitle: string;
-  country: string;
-  intendedUsage: string;
+  userType: string;
+  jobTitle?: string;
+  country?: string;
+  intendedUsage?: string;
 }
 
 export interface ApiKeyRegistrationResult {
@@ -30,19 +31,20 @@ export class AlphaVantageRegistrationService {
    * Automatically request an Alpha Vantage API key for a new user
    * This simulates the registration process - in production, you'd integrate with Alpha Vantage's API
    */
-  async requestApiKeyForUser(user: UserModel): Promise<ApiKeyRegistrationResult> {
+  async requestApiKeyForUser(user: UserModel & { organization?: string; userType?: string; jobTitle?: string; country?: string; intendedUsage?: string }): Promise<ApiKeyRegistrationResult> {
     try {
       console.log(`📝 Requesting Alpha Vantage API key for user: ${user.email}`);
 
-      // Extract user information
+      // Extract user information with provided data or fallbacks
       const registrationData: ApiKeyRegistrationData = {
         firstName: user.first_name || 'User',
         lastName: user.last_name || 'Finora',
         email: user.email,
-        organization: config.alphaVantage.companyName,
-        jobTitle: 'Portfolio Manager',
-        country: 'United States',
-        intendedUsage: 'Personal portfolio management and stock tracking through Finora mobile application'
+        organization: user.organization || config.alphaVantage.companyName || 'Individual Investor',
+        userType: user.userType || 'Investor',
+        jobTitle: user.jobTitle,
+        country: user.country,
+        intendedUsage: user.intendedUsage,
       };
 
       // In a real implementation, you would:
@@ -50,22 +52,38 @@ export class AlphaVantageRegistrationService {
       // 2. Handle the response and extract the API key
       // 3. Store the key securely in the database
       
-      // For now, we'll simulate the process and generate a placeholder
-      const simulatedResult = await this.simulateApiKeyRegistration(registrationData);
-      
-      if (simulatedResult.success && simulatedResult.apiKey) {
-        // Store the API key for the user
-        await this.storeUserApiKey(user.id, simulatedResult.apiKey);
-        
+      // Try real registration first; fallback to shared key if available
+      const realResult = await this.realApiKeyRegistration(registrationData);
+
+      if (realResult.success && realResult.apiKey) {
+        await this.storeUserApiKey(user.id, realResult.apiKey);
         console.log(`✅ API key registered for user: ${user.email}`);
-        return simulatedResult;
-      } else {
-        console.error(`❌ Failed to register API key for user: ${user.email}`);
+        return realResult;
+      }
+
+      // Fallback: use configured shared API key if present
+      const sharedKey = config.alphaVantage.apiKey;
+      if (sharedKey && sharedKey.trim()) {
+        console.warn(`⚠️ Using shared Alpha Vantage API key as fallback for ${user.email}`);
         return {
-          success: false,
-          message: 'Failed to register API key with Alpha Vantage'
+          success: true,
+          apiKey: sharedKey,
+          message: 'Using shared Alpha Vantage API key as fallback',
+          registrationId: `fallback_${Date.now()}`
         };
       }
+
+      // Final fallback in non-production: simulate to unblock dev
+      if (process.env.NODE_ENV !== 'production') {
+        const simulatedResult = await this.simulateApiKeyRegistration(registrationData);
+        if (simulatedResult.success && simulatedResult.apiKey) {
+          await this.storeUserApiKey(user.id, simulatedResult.apiKey);
+          return simulatedResult;
+        }
+      }
+
+      console.error(`❌ Failed to register or fallback API key for user: ${user.email}`);
+      return { success: false, message: 'Failed to register API key with Alpha Vantage' };
     } catch (error) {
       console.error('Error requesting API key:', error);
       return {
@@ -244,47 +262,63 @@ export class AlphaVantageRegistrationService {
    */
   private async realApiKeyRegistration(data: ApiKeyRegistrationData): Promise<ApiKeyRegistrationResult> {
     try {
-      // This is a placeholder for the actual Alpha Vantage registration API
-      // Alpha Vantage doesn't currently have a public API for key registration
-      // You would need to:
-      // 1. Contact Alpha Vantage for enterprise API access
-      // 2. Use their provided registration endpoint
-      // 3. Handle authentication and rate limiting
-      
-      const response = await axios.post(`${this.baseUrl}/api/register`, {
-        first_name: data.firstName,
-        last_name: data.lastName,
-        email: data.email,
-        organization: data.organization,
-        job_title: data.jobTitle,
-        country: data.country,
-        intended_usage: data.intendedUsage
-      }, {
+      // Step 1: Fetch support page to get CSRF token + cookies
+      const pageResponse = await axios.get(`${this.baseUrl}/support/`, {
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.alphaVantage.apiKey}` // Master API key
-        }
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        timeout: 15000
       });
 
-      if (response.data.success) {
+      const csrfMatch = pageResponse.data.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
+      if (!csrfMatch) {
+        return { success: false, message: 'CSRF token not found on Alpha Vantage page' };
+      }
+      const csrfToken = csrfMatch[1];
+
+      const cookies = pageResponse.headers['set-cookie'] || [];
+      const cookieHeader = cookies.map((c: string) => c.split(';')[0]).join('; ');
+
+      // Step 2: Submit registration form
+      const formData = new URLSearchParams();
+      formData.append('first_text', 'deprecated');
+      formData.append('last_text', 'deprecated');
+      formData.append('occupation_text', data.jobTitle || data.userType || 'Investor');
+      formData.append('organization_text', data.organization || 'Individual Investor');
+      formData.append('email_text', data.email);
+      formData.append('csrfmiddlewaretoken', csrfToken);
+
+      const submitResponse = await axios.post(`${this.baseUrl}/create_post/`, formData.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json, text/javascript, */*; q=0.01',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': `${this.baseUrl}/support/`,
+          'Origin': this.baseUrl,
+          'Cookie': cookieHeader
+        },
+        timeout: 20000
+      });
+
+      const responseText = submitResponse.data?.text || submitResponse.data?.message || JSON.stringify(submitResponse.data);
+      const apiKeyMatch = responseText?.match(/\b([A-Z0-9]{16})\b/);
+
+      if (apiKeyMatch && apiKeyMatch[1]) {
         return {
           success: true,
-          apiKey: response.data.api_key,
+          apiKey: apiKeyMatch[1],
           message: 'API key successfully registered with Alpha Vantage',
-          registrationId: response.data.registration_id
-        };
-      } else {
-        return {
-          success: false,
-          message: response.data.message || 'Registration failed'
+          registrationId: `av_${Date.now()}`
         };
       }
+
+      return { success: false, message: 'Failed to extract API key from Alpha Vantage response' };
     } catch (error) {
       console.error('Real API registration error:', error);
-      return {
-        success: false,
-        message: 'Failed to register with Alpha Vantage API'
-      };
+      return { success: false, message: 'Failed to register with Alpha Vantage' };
     }
   }
 }

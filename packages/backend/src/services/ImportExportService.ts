@@ -140,8 +140,7 @@ export class ImportExportService {
   ): Promise<string> {
     try {
       const userStocks = await UserStock.getUserStocks(userId, {
-        groupId: options.groupId,
-        includeInactive: false
+        groupId: options.groupId
       });
 
       const exportData: ExportData[] = [];
@@ -155,9 +154,9 @@ export class ImportExportService {
           industry: userStock.stock.industry,
           targetPrice: userStock.target_price,
           cutoffPrice: userStock.cutoff_price,
-          groupName: userStock.group?.name,
+          groupName: undefined,
           notes: userStock.notes,
-          addedAt: userStock.added_at.toISOString().split('T')[0]
+          addedAt: ((userStock.added_at ?? new Date()).toISOString().split('T')[0]) as string
         };
 
         // Include current prices if requested
@@ -457,6 +456,6 @@ export class ImportExportService {
       '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
       '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
     ];
-    return colors[Math.floor(Math.random() * colors.length)];
+    return colors[Math.floor(Math.random() * colors.length)] as string;
   }
 }

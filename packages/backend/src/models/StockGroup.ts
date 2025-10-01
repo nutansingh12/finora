@@ -65,8 +65,8 @@ export class StockGroup extends BaseModel {
           this.db.raw('COUNT(user_stocks.id) as stockCount')
         )
         .leftJoin('user_stocks', function() {
-          this.on('user_stocks.group_id', '=', 'stock_groups.id')
-              .andOn('user_stocks.is_active', '=', this.db.raw('true'));
+          this.on('user_stocks.group_id', '=', 'stock_groups.id');
+              this.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
         })
         .groupBy('stock_groups.id');
     }
@@ -153,8 +153,8 @@ export class StockGroup extends BaseModel {
         this.db.raw('COUNT(user_stocks.id) as stockCount')
       )
       .leftJoin('user_stocks', function() {
-        this.on('user_stocks.group_id', '=', 'stock_groups.id')
-            .andOn('user_stocks.is_active', '=', this.db.raw('true'));
+        this.on('user_stocks.group_id', '=', 'stock_groups.id');
+            this.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
       })
       .where('stock_groups.id', groupId)
       .where('stock_groups.user_id', userId)
@@ -302,6 +302,6 @@ export class StockGroup extends BaseModel {
       '#14B8A6', '#F43F5E', '#8B5A2B', '#6B7280', '#059669'
     ];
     
-    return colors[Math.floor(Math.random() * colors.length)];
+    return colors[Math.floor(Math.random() * colors.length)] as string;
   }
 }

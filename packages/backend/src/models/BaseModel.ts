@@ -9,7 +9,7 @@ export interface BaseModelInterface {
 
 export abstract class BaseModel {
   protected static tableName: string;
-  protected static db: Knex = db;
+  public static db: Knex = db;
 
   // Get table name for the model
   static getTableName(): string {

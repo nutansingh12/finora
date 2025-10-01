@@ -158,7 +158,7 @@ export class ApiKeyController {
         return;
       }
 
-      const apiKey = await UserApiKey.findById(keyId);
+      const apiKey = await UserApiKey.findById(keyId as string);
 
       if (!apiKey || apiKey.user_id !== userId) {
         res.status(404).json({
@@ -168,7 +168,7 @@ export class ApiKeyController {
         return;
       }
 
-      await UserApiKey.deactivate(keyId);
+      await UserApiKey.deactivate(keyId as string);
 
       res.json({
         success: true,
@@ -205,7 +205,7 @@ export class ApiKeyController {
         return;
       }
 
-      const apiKey = await UserApiKey.findById(keyId);
+      const apiKey = await UserApiKey.findById(keyId as string);
 
       if (!apiKey || apiKey.user_id !== userId) {
         res.status(404).json({

@@ -37,10 +37,10 @@ export class RollingAnalysis extends BaseModel {
     });
 
     if (existing) {
-      return this.updateById<RollingAnalysisModel>(existing.id, {
+      return (await this.updateById<RollingAnalysisModel>(existing.id, {
         ...data,
         updated_at: new Date()
-      });
+      })) as RollingAnalysisModel;
     } else {
       return this.create<RollingAnalysisModel>({
         ...data,
@@ -78,8 +78,8 @@ export class RollingAnalysis extends BaseModel {
       )
       .join('stocks', 'rolling_analysis.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('rolling_analysis.percent_above_52w_low', '<=', threshold)
       .where('stocks.is_active', true)
@@ -114,8 +114,8 @@ export class RollingAnalysis extends BaseModel {
       )
       .join('stocks', 'rolling_analysis.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('stocks.is_active', true);
 
@@ -207,8 +207,8 @@ export class RollingAnalysis extends BaseModel {
       )
       .join('stocks', 'rolling_analysis.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('rolling_analysis.trend_direction', trendDirection)
       .where('rolling_analysis.trend_strength', '>=', minTrendStrength)
@@ -232,8 +232,8 @@ export class RollingAnalysis extends BaseModel {
       )
       .join('stocks', 'rolling_analysis.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('stocks.is_active', true)
       .orderBy('rolling_analysis.volatility', 'desc')
@@ -255,8 +255,8 @@ export class RollingAnalysis extends BaseModel {
       )
       .join('stocks', 'rolling_analysis.stock_id', 'stocks.id')
       .join('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'rolling_analysis.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .where('stocks.is_active', true)
       .orderBy('rolling_analysis.volatility', 'asc')
@@ -265,12 +265,9 @@ export class RollingAnalysis extends BaseModel {
 
   // Get analysis for multiple stocks
   static async getMultipleAnalysis(stockIds: string[]): Promise<RollingAnalysisModel[]> {
-    return this.findAll<RollingAnalysisModel>({}, {
-      whereIn: {
-        column: 'stock_id',
-        values: stockIds
-      }
-    });
+    return this.db(this.tableName)
+      .select('*')
+      .whereIn('stock_id', stockIds);
   }
 
   // Update analysis for stock
@@ -316,11 +313,9 @@ export class RollingAnalysis extends BaseModel {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
-    return this.findAll<RollingAnalysisModel>({}, {
-      where: {
-        updated_at: { '<': cutoffDate }
-      }
-    });
+    return this.db(this.tableName)
+      .select('*')
+      .where('updated_at', '<', cutoffDate);
   }
 
   // Refresh analysis for all stocks

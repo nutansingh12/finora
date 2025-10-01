@@ -17,6 +17,7 @@ import alertRoutes from './routes/alerts';
 import searchRoutes from './routes/search';
 import marketDataRoutes from './routes/marketData';
 import feedbackRoutes from './routes/feedback';
+import portfolioRoutes from './routes/portfolio';
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/market', marketDataRoutes);
 app.use('/api/api-keys', require('./routes/apiKeys').default);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/portfolio', portfolioRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -134,7 +136,9 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Start the server
-startServer();
+// Start the server only when not running on Vercel (serverless)
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
 
 export default app;

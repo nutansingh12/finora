@@ -217,7 +217,7 @@ export class FeedbackController {
    */
   static async getFeedbackByRating(req: Request, res: Response): Promise<void> {
     try {
-      const rating = parseInt(req.params.rating);
+      const rating = parseInt((req.params.rating as string) || '0');
       
       if (!rating || rating < 1 || rating > 5) {
         res.status(400).json({

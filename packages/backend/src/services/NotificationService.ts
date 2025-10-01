@@ -1,4 +1,10 @@
-import admin from 'firebase-admin';
+let admin: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  admin = require('firebase-admin');
+} catch {
+  admin = null as any;
+}
 import { BaseModel } from '../models/BaseModel';
 
 export interface PushNotificationPayload {
@@ -23,7 +29,7 @@ export interface NotificationPreferences {
 
 export class NotificationService {
   private static instance: NotificationService;
-  private firebaseApp: admin.app.App | null = null;
+  private firebaseApp: any = null;
 
   constructor() {
     this.initializeFirebase();
@@ -79,7 +85,7 @@ export class NotificationService {
         return false;
       }
 
-      const message: admin.messaging.MulticastMessage = {
+      const message: any = {
         tokens,
         notification: {
           title: payload.title,
@@ -370,7 +376,7 @@ export class NotificationService {
 
   private async handleFailedTokens(
     tokens: string[],
-    responses: admin.messaging.SendResponse[]
+    responses: any[]
   ): Promise<void> {
     const failedTokens: string[] = [];
     
@@ -381,7 +387,8 @@ export class NotificationService {
         // Remove invalid tokens
         if (errorCode === 'messaging/invalid-registration-token' ||
             errorCode === 'messaging/registration-token-not-registered') {
-          failedTokens.push(tokens[index]);
+          const t = tokens[index];
+          if (t) failedTokens.push(t);
         }
       }
     });

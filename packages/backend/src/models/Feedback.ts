@@ -125,7 +125,7 @@ export class Feedback extends BaseModel {
   static async getRecent(limit: number = 10): Promise<FeedbackModel[]> {
     // This would need proper SQL with ORDER BY and LIMIT
     // For now, return basic findAll
-    return this.findAll<FeedbackModel>({}, limit);
+    return this.findAll<FeedbackModel>({}, { limit });
   }
 
   /**

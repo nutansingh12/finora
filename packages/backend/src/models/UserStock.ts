@@ -77,8 +77,8 @@ export class UserStock extends BaseModel {
       )
       .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
       .leftJoin('stock_prices as sp', function() {
-        this.on('sp.stock_id', '=', 'user_stocks.stock_id')
-            .andOn('sp.is_latest', '=', this.db.raw('true'));
+        this.on('sp.stock_id', '=', 'user_stocks.stock_id');
+            this.on('sp.is_latest', '=', BaseModel.db.raw('true'));
       })
       .leftJoin('rolling_analysis as ra', 'ra.stock_id', 'user_stocks.stock_id')
       .where('user_stocks.user_id', userId)
@@ -302,8 +302,8 @@ export class UserStock extends BaseModel {
       .join('stocks', 'user_stocks.stock_id', 'stocks.id')
       .leftJoin('alerts', function() {
         this.on('alerts.stock_id', '=', 'user_stocks.stock_id')
-            .andOn('alerts.user_id', '=', 'user_stocks.user_id')
-            .andOn('alerts.is_active', '=', this.db.raw('true'));
+            .andOn('alerts.user_id', '=', 'user_stocks.user_id');
+            this.on('alerts.is_active', '=', BaseModel.db.raw('true'));
       })
       .where('user_stocks.user_id', userId)
       .where('user_stocks.is_active', true)

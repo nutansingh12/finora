@@ -49,6 +49,12 @@ export const config = {
     skipEmails: process.env.ALPHA_VANTAGE_SKIP_EMAILS?.split(',').map(email => email.trim().toLowerCase()) || []
   },
 
+  // Yahoo Finance API Configuration
+  yahooFinance: {
+    apiKey: process.env.YAHOO_FINANCE_API_KEY,
+    baseUrl: process.env.YAHOO_FINANCE_BASE_URL || 'https://query1.finance.yahoo.com'
+  },
+
   // Email Configuration
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
