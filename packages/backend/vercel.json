@@ -4,7 +4,6 @@
     { "src": "api/index.ts", "use": "@vercel/node" },
     { "src": "api/health.ts", "use": "@vercel/node" }
   ],
-  "outputDirectory": "public",
   "functions": {
     "api/index.ts": {
       "runtime": "nodejs18.x",
