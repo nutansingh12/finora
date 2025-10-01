@@ -29,6 +29,9 @@ function writeFile(p, content) {
 function buildTypescript() {
   console.log('> Compiling TypeScript (npm run build)');
   execSync('npm run build', { stdio: 'inherit' });
+  // Rewrite TS path aliases (e.g. @/...) in emitted JS to relative paths so Node/NCC can resolve them
+  console.log('> Rewriting TS path aliases (npx tsc-alias)');
+  execSync('npx --yes tsc-alias -p tsconfig.json', { stdio: 'inherit' });
 }
 
 function emitHealthFunction() {
