@@ -84,6 +84,7 @@ function emitConfig() {
     routes: [
       { src: '/api/health', dest: 'api/health' },
       { src: '/api/(.*)', dest: 'api/index' },
+      { src: '/(.*)', dest: 'api/index' },
     ],
   });
 }
