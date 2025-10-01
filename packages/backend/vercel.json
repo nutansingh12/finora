@@ -1,7 +1,8 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/index.ts", "use": "@vercel/node" }
+    { "src": "api/index.ts", "use": "@vercel/node" },
+    { "src": "api/health.ts", "use": "@vercel/node" }
   ],
   "outputDirectory": "public",
   "functions": {
@@ -9,10 +10,17 @@
       "runtime": "nodejs18.x",
       "maxDuration": 30,
       "memory": 1024
+    },
+    "api/health.ts": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 10,
+      "memory": 256
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "api/index.ts" }
+    { "src": "^/api/health$", "dest": "api/health.ts" },
+    { "src": "^/api/(.*)$", "dest": "api/index.ts" },
+    { "src": "^/(.*)$", "dest": "api/index.ts" }
   ]
 }
 
