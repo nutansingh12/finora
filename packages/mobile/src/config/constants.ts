@@ -1,7 +1,7 @@
 // API Configuration
 export const API_BASE_URL = __DEV__
   ? 'http://localhost:3001/api'
-  : 'https://finora-ehqzochz5-ns-medias-projects.vercel.app/api';
+  : 'https://finora-backend-qwg4.vercel.app/api';
 
 // App Configuration
 export const APP_NAME = 'Finora';
