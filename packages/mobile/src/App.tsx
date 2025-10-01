@@ -6,7 +6,8 @@ import { StockChartModal } from './components/StockChartModal';
 import { StockService } from './services/StockService';
 import { ApiService } from './services/ApiService';
 
-const API_BASE_URL = 'https://finora-backendfinora-api.vercel.app/api';
+import { API_BASE_URL } from './config/constants';
+
 
 console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
 
@@ -455,7 +456,7 @@ const App: React.FC = () => {
   const syncToCloudDatabase = async (data: any[]) => {
     try {
       // In production, implement API call to your backend
-      const response = await fetch('https://finora-ehqzochz5-ns-medias-projects.vercel.app/api/watchlist', {
+      const response = await fetch(`${API_BASE_URL}/watchlist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
