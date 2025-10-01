@@ -128,8 +128,14 @@ const requiredEnvVars = [
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-  process.exit(1);
+  // On Vercel serverless functions, not all endpoints require DB access.
+  // Crash only in non-serverless environments; otherwise, log a warning.
+  if (process.env.VERCEL !== '1') {
+    console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
+    process.exit(1);
+  } else {
+    console.warn('⚠️ Missing optional env vars on Vercel (continuing):', missingEnvVars.join(', '));
+  }
 }
 
 export default config;
