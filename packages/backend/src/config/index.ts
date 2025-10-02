@@ -89,7 +89,8 @@ export const config = {
   // File Upload Configuration
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5242880', 10), // 5MB
-    uploadPath: process.env.UPLOAD_PATH || 'uploads/'
+    // On Vercel/serverless, only /tmp is writable; allow override via env
+    uploadPath: process.env.UPLOAD_PATH || (process.env.VERCEL === '1' ? '/tmp/uploads' : 'uploads/')
   },
 
   // Logging Configuration

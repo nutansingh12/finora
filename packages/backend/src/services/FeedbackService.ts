@@ -28,8 +28,8 @@ export class FeedbackService {
       }
     });
 
-    // Create screenshots directory
-    this.screenshotDir = path.join(process.cwd(), 'uploads', 'screenshots');
+    // Create screenshots directory (use configured upload path; /tmp on serverless)
+    this.screenshotDir = path.join(config.upload?.uploadPath || '/tmp/uploads', 'screenshots');
     this.ensureScreenshotDir();
   }
 
