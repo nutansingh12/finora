@@ -20,6 +20,8 @@ import { register as registerTsPaths } from 'tsconfig-paths';
       fs.existsSync(path.join(c, 'controllers'))
     );
     if (baseUrl) {
+      // Helpful during Vercel function boot to confirm which layout is used
+      try { console.log('[ts-paths] baseUrl:', baseUrl); } catch {}
       const aliasKey = '@' + '/*';
       const paths: Record<string, string[]> = {};
       // Support direct children and nested under src
