@@ -1,9 +1,16 @@
-import 'tsconfig-paths/register';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+// Ensure TS path aliases work inside the bundled serverless function (no tsconfig.json at runtime)
+import { register as registerTsPaths } from 'tsconfig-paths';
+{
+  const aliasKey = '@' + '/*';
+  const paths: Record<string, string[]> = {};
+  paths[aliasKey] = ['src/*'];
+  registerTsPaths({ baseUrl: __dirname, paths });
+}
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
