@@ -3,14 +3,33 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-// Ensure TS path aliases work inside the bundled serverless function (no tsconfig.json at runtime)
+// Robust TS path alias registration (works for dist, src, and bundled runtime)
+import path from 'path';
+import fs from 'fs';
 import { register as registerTsPaths } from 'tsconfig-paths';
-{
-  const aliasKey = '@' + '/*';
-  const paths: Record<string, string[]> = {};
-  paths[aliasKey] = ['src/*'];
-  registerTsPaths({ baseUrl: __dirname, paths });
-}
+(() => {
+  try {
+    const candidates = [
+      path.resolve(__dirname),
+      path.resolve(__dirname, 'src'),
+      path.resolve(__dirname, '..', 'src'),
+    ];
+    const baseUrl = candidates.find((c) =>
+      fs.existsSync(path.join(c, 'models')) ||
+      fs.existsSync(path.join(c, 'routes')) ||
+      fs.existsSync(path.join(c, 'controllers'))
+    );
+    if (baseUrl) {
+      const aliasKey = '@' + '/*';
+      const paths: Record<string, string[]> = {};
+      // Support direct children and nested under src
+      paths[aliasKey] = ['*', 'src/*'];
+      registerTsPaths({ baseUrl, paths });
+    }
+  } catch {
+    // noop
+  }
+})();
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { config } from './config';
