@@ -12,7 +12,8 @@ const portfolioController = new PortfolioController();
 
 // Configure multer for file uploads
 const upload = multer({
-  dest: config.upload?.uploadPath || './uploads',
+  // On serverless (Vercel) only /tmp is writable. Allow override via config, default to /tmp/uploads
+  dest: config.upload?.uploadPath || '/tmp/uploads',
   limits: {
     fileSize: config.upload?.maxFileSize || 5 * 1024 * 1024 // 5MB default
   },

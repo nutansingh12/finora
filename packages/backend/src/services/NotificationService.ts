@@ -44,7 +44,12 @@ export class NotificationService {
 
   private initializeFirebase(): void {
     try {
-      if (!admin.apps.length) {
+      if (!admin) {
+        console.warn('Firebase Admin SDK not available; push notifications disabled');
+        this.firebaseApp = null;
+        return;
+      }
+      if (!admin.apps || !admin.apps.length) {
         this.firebaseApp = admin.initializeApp({
           credential: admin.credential.cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
@@ -57,6 +62,7 @@ export class NotificationService {
       }
     } catch (error) {
       console.error('Failed to initialize Firebase:', error);
+      this.firebaseApp = null;
     }
   }
 
@@ -66,8 +72,8 @@ export class NotificationService {
     payload: PushNotificationPayload
   ): Promise<boolean> {
     try {
-      if (!this.firebaseApp) {
-        console.error('Firebase not initialized');
+      if (!this.firebaseApp || !admin) {
+        console.error('Firebase not initialized or Admin SDK unavailable');
         return false;
       }
 
