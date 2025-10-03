@@ -91,6 +91,26 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Status endpoint (reports DB, upload path, notifications readiness)
+app.get('/api/status', async (_req, res) => {
+  try {
+    const dbConnected = await testConnection();
+    const notificationsEnabled = !!(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
+    res.json({
+      success: true,
+      data: {
+        db: { connected: dbConnected },
+        upload: { path: config.upload?.uploadPath || '/tmp/uploads' },
+        notifications: { enabled: notificationsEnabled }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Status check failed' });
+  }
+});
+
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/stocks', stockRoutes);
@@ -127,13 +147,13 @@ const startServer = async () => {
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
       console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
-      
+
       server.close(async () => {
         console.log('✅ HTTP server closed');
-        
+
         // Close database connection
         await closeConnection();
-        
+
         console.log('✅ Graceful shutdown completed');
         process.exit(0);
       });
