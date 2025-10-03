@@ -51,6 +51,13 @@ const sectorValidation = [
 // Routes
 
 // Search stocks with autocomplete
+// Support both / and /stocks for backwards/compat convenience
+router.get(
+  '/',
+  searchValidation,
+  validateRequest,
+  SearchController.searchStocks
+);
 router.get(
   '/stocks',
   searchValidation,
