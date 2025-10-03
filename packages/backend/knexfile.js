@@ -3,7 +3,7 @@ require('dotenv').config();
 module.exports = {
   development: {
     client: 'postgresql',
-    connection: {
+    connection: process.env.DATABASE_URL || {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME || 'finora_dev',
@@ -26,7 +26,7 @@ module.exports = {
 
   test: {
     client: 'postgresql',
-    connection: {
+    connection: process.env.DATABASE_URL || {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME_TEST || 'finora_test',
@@ -49,7 +49,7 @@ module.exports = {
 
   production: {
     client: 'postgresql',
-    connection: {
+    connection: process.env.DATABASE_URL || {
       host: process.env.DB_HOST,
       port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME,
