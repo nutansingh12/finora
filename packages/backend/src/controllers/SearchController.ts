@@ -26,8 +26,15 @@ export class SearchController {
 
       const searchLimit = Math.min(parseInt(limit as string) || 10, 50);
 
-      // First, search in our local database
-      const localResults = await Stock.searchStocks(query, Math.ceil(searchLimit / 2));
+      // First, search in our local database (best-effort; continue if unavailable)
+      let localResults: any[] = [];
+      try {
+        localResults = await Stock.searchStocks(query, Math.ceil(searchLimit / 2));
+      } catch (e: any) {
+        const code = e?.code || e?.name || 'unknown';
+        console.warn('Local search unavailable; continuing with Yahoo only. Code:', code);
+        localResults = [];
+      }
 
       // Then search Yahoo Finance for additional results
       const yahooResults = await SearchController.yahooFinanceService.searchSymbols(
