@@ -49,6 +49,8 @@ import feedbackRoutes from './routes/feedback';
 import portfolioRoutes from './routes/portfolio';
 
 const app = express();
+// Trust reverse proxy headers (Vercel/Node serverless) so rate limiter and req.ip work correctly
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
