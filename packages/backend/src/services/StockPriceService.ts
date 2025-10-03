@@ -1,31 +1,43 @@
 import { StockPrice } from '@/models/StockPrice';
 import { RollingAnalysis } from '@/models/RollingAnalysis';
-import { YahooFinanceService, YahooStockData } from '@/services/YahooFinanceService';
+import { AlphaVantageService, AlphaVantageQuote } from '@/services/AlphaVantageService';
 
 export class StockPriceService {
-  private yahooFinanceService: YahooFinanceService;
+  private alphaVantageService: AlphaVantageService;
 
   constructor() {
-    this.yahooFinanceService = new YahooFinanceService();
+    this.alphaVantageService = new AlphaVantageService();
   }
 
-  // Update stock price with latest data
-  async updateStockPrice(stockId: string, stockData: YahooStockData): Promise<void> {
+  // Update stock price with latest data (accepts AlphaVantage or Yahoo-shaped quotes)
+  async updateStockPrice(stockId: string, quote: any): Promise<void> {
     try {
+      const price = quote.price ?? quote.regularMarketPrice;
+      const change = quote.change ?? quote.regularMarketChange ?? 0;
+      const changePercent = quote.changePercent ?? quote.regularMarketChangePercent ?? 0;
+      const volume = quote.volume ?? quote.regularMarketVolume ?? 0;
+      const marketCap = quote.marketCap;
+      const peRatio = quote.peRatio ?? quote.trailingPE;
+      const dividendYield = quote.dividendYield;
+      const fiftyTwoWeekLow = quote.fiftyTwoWeekLow;
+      const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh;
+      const fiftyDayAverage = quote.fiftyDayAverage;
+      const twoHundredDayAverage = quote.twoHundredDayAverage;
+
       // Create new price record
       await StockPrice.createPrice({
         stock_id: stockId,
-        price: stockData.regularMarketPrice,
-        change: stockData.regularMarketChange,
-        change_percent: stockData.regularMarketChangePercent,
-        volume: stockData.regularMarketVolume,
-        market_cap: stockData.marketCap,
-        pe_ratio: stockData.trailingPE,
-        dividend_yield: stockData.dividendYield,
-        fifty_two_week_low: stockData.fiftyTwoWeekLow,
-        fifty_two_week_high: stockData.fiftyTwoWeekHigh,
-        fifty_day_avg: stockData.fiftyDayAverage,
-        two_hundred_day_avg: stockData.twoHundredDayAverage,
+        price,
+        change,
+        change_percent: changePercent,
+        volume,
+        market_cap: marketCap,
+        pe_ratio: peRatio,
+        dividend_yield: dividendYield,
+        fifty_two_week_low: fiftyTwoWeekLow,
+        fifty_two_week_high: fiftyTwoWeekHigh,
+        fifty_day_avg: fiftyDayAverage,
+        two_hundred_day_avg: twoHundredDayAverage,
         is_latest: true
       });
 
@@ -105,9 +117,9 @@ export class StockPriceService {
               return;
             }
 
-            // Fetch latest data from Yahoo Finance
-            const stockData = await this.yahooFinanceService.getStockQuote(stock.symbol);
-            
+            // Fetch latest data from Alpha Vantage
+            const stockData = await this.alphaVantageService.getStockQuote(stock.symbol);
+
             if (stockData) {
               await this.updateStockPrice(stockId, stockData);
             }

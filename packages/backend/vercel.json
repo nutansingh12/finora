@@ -1,6 +1,9 @@
 {
   "buildCommand": "npm run vercel-build",
   "outputDirectory": ".",
-  "framework": null
+  "framework": null,
+  "crons": [
+    { "path": "/api/jobs/alerts-tick", "schedule": "*/5 * * * *" }
+  ]
 }
 

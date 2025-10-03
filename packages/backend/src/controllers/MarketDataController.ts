@@ -117,12 +117,24 @@ export class MarketDataController {
     }
   }
 
-  // Get trending stocks
+  // Get trending stocks (from DB latest most active)
   static async getTrendingStocks(req: Request, res: Response): Promise<void> {
     try {
-      const { region = 'US' } = req.query;
+      const { region = 'US', limit = 20 } = req.query;
 
-      const trendingStocks = await MarketDataController.integrationService.getTrendingStocks(region as string);
+      const mostActive = await (await import('@/models/StockPrice')).StockPrice.getMostActiveStocks(
+        Math.min(parseInt(limit as string) || 20, 50)
+      );
+
+      const trendingStocks = mostActive.map((row) => ({
+        symbol: row.symbol,
+        name: row.name,
+        price: row.price,
+        change: row.change,
+        changePercent: row.change_percent,
+        volume: row.volume,
+        region
+      }));
 
       res.json({
         success: true,

@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import config from '../config';
+import { UserApiKey } from '@/models/UserApiKey';
 
 // Alpha Vantage API Response Interfaces
 export interface AlphaVantageQuote {
@@ -98,12 +99,17 @@ export class AlphaVantageService {
 
     // Add request interceptor for key rotation and rate limiting
     this.client.interceptors.request.use(async (config) => {
+      // If caller already provided an API key (e.g., per-user), do not override
+      if (config.params && typeof (config.params as any).apikey === 'string') {
+        return config;
+      }
+
       const apiKey = await this.getAvailableApiKey();
-      config.params = { ...config.params, apikey: apiKey };
-      
-      // Track usage
+      config.params = { ...(config.params || {}), apikey: apiKey };
+
+      // Track usage for pool key
       this.trackKeyUsage(apiKey);
-      
+
       return config;
     });
 
@@ -268,26 +274,33 @@ export class AlphaVantageService {
     }
   }
 
-  // Get real-time stock quote
-  async getStockQuote(symbol: string): Promise<AlphaVantageQuote | null> {
+  // Get real-time stock quote (optionally using a user's own API key)
+  async getStockQuote(symbol: string, opts?: { userId?: string }): Promise<AlphaVantageQuote | null> {
     try {
       const cacheKey = `quote_${symbol.toUpperCase()}`;
-      
+
       // Check cache first
       const cachedData = this.getCachedData(cacheKey);
       if (cachedData) {
         return cachedData;
       }
 
-      const response = await this.client.get('/query', {
-        params: {
-          function: 'GLOBAL_QUOTE',
-          symbol: symbol.toUpperCase()
+      // Try user-specific API key if provided
+      let userKeyModel: any = null;
+      let params: any = { function: 'GLOBAL_QUOTE', symbol: symbol.toUpperCase() };
+
+      if (opts?.userId) {
+        userKeyModel = await UserApiKey.findActiveKeyForUser(opts.userId, 'alpha_vantage');
+        if (userKeyModel) {
+          const userKey = UserApiKey.getDecryptedApiKey(userKeyModel);
+          params.apikey = userKey;
         }
-      });
+      }
+
+      const response = await this.client.get('/query', { params });
 
       const data = response.data;
-      
+
       if (data['Error Message'] || data['Note']) {
         console.error('Alpha Vantage Error:', data['Error Message'] || data['Note']);
         return null;
@@ -313,7 +326,12 @@ export class AlphaVantageService {
 
       // Cache the result
       this.setCachedData(cacheKey, result);
-      
+
+      // Increment usage for user key if used
+      if (userKeyModel && params.apikey) {
+        await UserApiKey.incrementUsage(userKeyModel.id);
+      }
+
       return result;
     } catch (error) {
       console.error('Error fetching stock quote:', error);
@@ -321,8 +339,8 @@ export class AlphaVantageService {
     }
   }
 
-  // Get historical stock data
-  async getHistoricalData(symbol: string, period: 'daily' | 'weekly' | 'monthly' = 'daily'): Promise<AlphaVantageHistoricalData[]> {
+  // Get historical stock data (optionally using a user's own API key)
+  async getHistoricalData(symbol: string, period: 'daily' | 'weekly' | 'monthly' = 'daily', opts?: { userId?: string }): Promise<AlphaVantageHistoricalData[]> {
     try {
       const cacheKey = `historical_${symbol.toUpperCase()}_${period}`;
 
@@ -338,13 +356,20 @@ export class AlphaVantageService {
         monthly: 'TIME_SERIES_MONTHLY'
       };
 
-      const response = await this.client.get('/query', {
-        params: {
-          function: functionMap[period],
-          symbol: symbol.toUpperCase(),
-          outputsize: 'compact' // Last 100 data points
+      let params: any = {
+        function: functionMap[period],
+        symbol: symbol.toUpperCase(),
+        outputsize: 'compact'
+      };
+
+      if (opts?.userId) {
+        const userKeyModel = await UserApiKey.findActiveKeyForUser(opts.userId, 'alpha_vantage');
+        if (userKeyModel) {
+          params.apikey = UserApiKey.getDecryptedApiKey(userKeyModel);
         }
-      });
+      }
+
+      const response = await this.client.get('/query', { params });
 
       const data = response.data;
 
@@ -386,8 +411,8 @@ export class AlphaVantageService {
     }
   }
 
-  // Search for stocks
-  async searchStocks(query: string): Promise<AlphaVantageSearchResult[]> {
+  // Search for stocks (optionally using a user's own API key)
+  async searchStocks(query: string, opts?: { userId?: string }): Promise<AlphaVantageSearchResult[]> {
     try {
       const cacheKey = `search_${query.toLowerCase()}`;
 
@@ -397,12 +422,15 @@ export class AlphaVantageService {
         return cachedData;
       }
 
-      const response = await this.client.get('/query', {
-        params: {
-          function: 'SYMBOL_SEARCH',
-          keywords: query
+      let params: any = { function: 'SYMBOL_SEARCH', keywords: query };
+      if (opts?.userId) {
+        const userKeyModel = await UserApiKey.findActiveKeyForUser(opts.userId, 'alpha_vantage');
+        if (userKeyModel) {
+          params.apikey = UserApiKey.getDecryptedApiKey(userKeyModel);
         }
-      });
+      }
+
+      const response = await this.client.get('/query', { params });
 
       const data = response.data;
 

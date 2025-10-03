@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import { Stock } from '@/models/Stock';
-import { YahooFinanceService } from '@/services/YahooFinanceService';
+import { AlphaVantageService } from '@/services/AlphaVantageService';
 
 export class SearchController {
-  private static yahooFinanceService = new YahooFinanceService();
+  private static alphaVantageService = new AlphaVantageService();
 
   // Search stocks with autocomplete
   static async searchStocks(req: Request, res: Response): Promise<any> {
@@ -32,18 +32,18 @@ export class SearchController {
         localResults = await Stock.searchStocks(query, Math.ceil(searchLimit / 2));
       } catch (e: any) {
         const code = e?.code || e?.name || 'unknown';
-        console.warn('Local search unavailable; continuing with Yahoo only. Code:', code);
+        console.warn('Local search unavailable; continuing with Alpha Vantage only. Code:', code);
         localResults = [];
       }
 
-      // Then search Yahoo Finance for additional results
-      const yahooResults = await SearchController.yahooFinanceService.searchSymbols(
-        query,
-        searchLimit - localResults.length
+      // Then search Alpha Vantage for additional results
+      const alphaResults = await SearchController.alphaVantageService.searchStocks(
+        query as string,
+        { userId: (req as any).user?.id }
       );
 
       // Combine and deduplicate results
-      const combinedResults = SearchController.combineSearchResults(localResults, yahooResults);
+      const combinedResults = SearchController.combineSearchResults(localResults, alphaResults);
 
       // Limit final results
       const suggestions = combinedResults.slice(0, searchLimit);
@@ -75,12 +75,12 @@ export class SearchController {
 
       // First check local database
       let stock = await Stock.findBySymbol(symbol.toUpperCase());
-      
-      // If not found locally, fetch from Yahoo Finance
+
+      // If not found locally, fetch from Alpha Vantage
       if (!stock) {
-        const yahooData = await SearchController.yahooFinanceService.getStockQuote(symbol);
-        
-        if (!yahooData) {
+        const avData = await SearchController.alphaVantageService.getStockQuote(symbol);
+
+        if (!avData) {
           return res.status(404).json({
             success: false,
             message: 'Stock not found'
@@ -89,16 +89,18 @@ export class SearchController {
 
         // Create stock in database for future reference
         stock = await Stock.createStock({
-          symbol: yahooData.symbol,
-          name: yahooData.longName || yahooData.shortName || symbol,
-          exchange: yahooData.exchange || 'UNKNOWN',
-          sector: yahooData.sector,
-          industry: yahooData.industry
+          symbol: avData.symbol,
+          name: symbol.toUpperCase(),
+          exchange: 'UNKNOWN',
+          sector: undefined,
+          industry: undefined
         });
       }
 
-      // Get latest quote from Yahoo Finance
-      const quote = await SearchController.yahooFinanceService.getStockQuote(symbol);
+      // Get latest quote from Alpha Vantage (prefer per-user key if available)
+      const quote = await SearchController.alphaVantageService.getStockQuote(symbol, {
+        userId: (req as any).user?.id
+      });
 
       if (!quote) {
         return res.status(404).json({
@@ -119,16 +121,15 @@ export class SearchController {
             industry: stock.industry
           },
           quote: {
-            price: quote.regularMarketPrice,
-            change: quote.regularMarketChange,
-            changePercent: quote.regularMarketChangePercent,
-            volume: quote.regularMarketVolume,
+            price: quote.price,
+            change: quote.change,
+            changePercent: quote.changePercent,
+            volume: quote.volume,
             marketCap: quote.marketCap,
-            peRatio: quote.trailingPE,
-            dividendYield: quote.dividendYield,
-            fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
-            fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
-            lastUpdated: new Date().toISOString()
+            peRatio: quote.peRatio,
+            fiftyTwoWeekLow: null,
+            fiftyTwoWeekHigh: null,
+            lastUpdated: quote.timestamp
           }
         }
       });
@@ -160,18 +161,28 @@ export class SearchController {
         });
       }
 
-      const quotes = await SearchController.yahooFinanceService.getMultipleQuotes(symbols);
+      const results: any[] = [];
+      for (const sym of symbols) {
+        const q = await SearchController.alphaVantageService.getStockQuote(sym, {
+          userId: (req as any).user?.id
+        });
+        if (q) {
+          results.push({
+            symbol: q.symbol,
+            name: sym,
+            price: q.price,
+            change: q.change,
+            changePercent: q.changePercent,
+            volume: q.volume,
+            marketCap: q.marketCap,
+            lastUpdated: q.timestamp
+          });
+        }
+        // small delay to be gentle with rate limits across keys
+        await new Promise(r => setTimeout(r, 250));
+      }
 
-      const formattedQuotes = quotes.map(quote => ({
-        symbol: quote.symbol,
-        name: quote.longName || quote.shortName,
-        price: quote.regularMarketPrice,
-        change: quote.regularMarketChange,
-        changePercent: quote.regularMarketChangePercent,
-        volume: quote.regularMarketVolume,
-        marketCap: quote.marketCap,
-        lastUpdated: new Date().toISOString()
-      }));
+      const formattedQuotes = results;
 
       res.json({
         success: true,
@@ -192,12 +203,21 @@ export class SearchController {
       const { limit = 20 } = req.query;
       const searchLimit = Math.min(parseInt(limit as string) || 20, 50);
 
-      // Get trending stocks from Yahoo Finance
-      const trendingStocks = await SearchController.yahooFinanceService.getTrendingStocks(searchLimit);
+      // Trending from our DB: most active by volume among latest prices
+      const mostActive = await (await import('@/models/StockPrice')).StockPrice.getMostActiveStocks(searchLimit);
+      const stocks = mostActive.map((row) => ({
+        symbol: row.symbol,
+        name: row.name,
+        price: row.price,
+        change: row.change,
+        changePercent: row.change_percent,
+        volume: row.volume,
+        source: 'db'
+      }));
 
       res.json({
         success: true,
-        data: { stocks: trendingStocks }
+        data: { stocks }
       });
     } catch (error) {
       console.error('Get trending stocks error:', error);
@@ -273,7 +293,7 @@ export class SearchController {
   }
 
   // Private helper methods
-  private static combineSearchResults(localResults: any[], yahooResults: any[]): any[] {
+  private static combineSearchResults(localResults: any[], alphaResults: any[]): any[] {
     const symbolSet = new Set();
     const combined: any[] = [];
 
@@ -293,18 +313,18 @@ export class SearchController {
       }
     }
 
-    // Add Yahoo results that aren't already included
-    for (const result of yahooResults) {
+    // Add Alpha Vantage results that aren't already included
+    for (const result of alphaResults) {
       if (!symbolSet.has(result.symbol)) {
         symbolSet.add(result.symbol);
         combined.push({
           symbol: result.symbol,
-          name: result.longName || result.shortName,
-          exchange: result.exchange,
-          sector: result.sector,
-          industry: result.industry,
-          type: result.quoteType?.toLowerCase() || 'stock',
-          source: 'yahoo'
+          name: result.name,
+          exchange: result.region,
+          sector: undefined,
+          industry: undefined,
+          type: (result.type || 'stock').toLowerCase(),
+          source: 'alpha_vantage'
         });
       }
     }

@@ -4,11 +4,11 @@ import { Stock } from '../models/Stock';
 import { UserStock } from '../models/UserStock';
 import { StockPrice } from '../models/StockPrice';
 import { RollingAnalysis } from '../models/RollingAnalysis';
-import { YahooFinanceService } from '../services/YahooFinanceService';
+import { AlphaVantageService } from '../services/AlphaVantageService';
 import { StockPriceService } from '../services/StockPriceService';
 
 export class StockController {
-  private static yahooFinanceService = new YahooFinanceService();
+  private static alphaVantageService = new AlphaVantageService();
   private static stockPriceService = new StockPriceService();
 
   // Get user's stocks
@@ -71,9 +71,9 @@ export class StockController {
       let stock = await Stock.findBySymbol(symbol.toUpperCase());
       
       if (!stock) {
-        // Fetch stock data from Yahoo Finance
-        const stockData = await StockController.yahooFinanceService.getStockQuote(symbol);
-        
+        // Fetch stock data from Alpha Vantage
+        const stockData = await StockController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
+
         if (!stockData) {
           return res.status(404).json({
             success: false,
@@ -83,10 +83,10 @@ export class StockController {
 
         stock = await Stock.upsertStock({
           symbol: stockData.symbol,
-          name: stockData.longName || stockData.shortName || symbol,
-          exchange: stockData.exchange || 'UNKNOWN',
-          sector: stockData.sector,
-          industry: stockData.industry
+          name: symbol.toUpperCase(),
+          exchange: 'UNKNOWN',
+          sector: undefined,
+          industry: undefined
         });
 
         if (!stock) {

@@ -8,7 +8,7 @@ import { BaseModel } from '../models/BaseModel';
 import { Stock } from '../models/Stock';
 import { UserStock } from '../models/UserStock';
 import { StockGroup } from '../models/StockGroup';
-import { YahooFinanceService } from './YahooFinanceService';
+import { AlphaVantageService } from './AlphaVantageService';
 
 export interface ImportResult {
   success: boolean;
@@ -55,7 +55,7 @@ export interface ImportRow {
 }
 
 export class ImportExportService {
-  private static yahooFinanceService = new YahooFinanceService();
+  private static alphaVantageService = new AlphaVantageService();
 
   // Import stocks from CSV
   static async importStocksFromCSV(
@@ -363,7 +363,7 @@ export class ImportExportService {
 
     // Validate symbol if requested
     if (options.validateSymbols) {
-      const stockData = await this.yahooFinanceService.getStockQuote(symbol);
+      const stockData = await this.alphaVantageService.getStockQuote(symbol, { userId });
       if (!stockData) {
         throw new Error(`Invalid or unknown stock symbol: ${symbol}`);
       }
@@ -372,18 +372,18 @@ export class ImportExportService {
     // Get or create stock
     let stock = await Stock.findBySymbol(symbol);
     if (!stock) {
-      // Fetch stock data from Yahoo Finance
-      const stockData = await this.yahooFinanceService.getStockQuote(symbol);
+      // Fetch stock data from Alpha Vantage
+      const stockData = await this.alphaVantageService.getStockQuote(symbol, { userId });
       if (!stockData) {
         throw new Error(`Could not fetch data for symbol: ${symbol}`);
       }
 
       stock = await Stock.createStock({
         symbol: stockData.symbol,
-        name: stockData.longName || stockData.shortName || symbol,
-        exchange: stockData.exchange || 'UNKNOWN',
-        sector: stockData.sector,
-        industry: stockData.industry
+        name: symbol,
+        exchange: 'UNKNOWN',
+        sector: undefined,
+        industry: undefined
       });
     }
 
