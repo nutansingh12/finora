@@ -3,7 +3,7 @@
   "outputDirectory": ".",
   "framework": null,
   "crons": [
-    { "path": "/api/jobs/alerts-tick", "schedule": "*/5 * * * *" }
+    { "path": "/api/jobs/alerts-tick", "schedule": "0 0 * * *" }
   ]
 }
 
