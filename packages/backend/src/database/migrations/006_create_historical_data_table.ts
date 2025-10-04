@@ -1,6 +1,8 @@
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
+  const exists = await knex.schema.hasTable('historical_data');
+  if (exists) return;
   return knex.schema.createTable('historical_data', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('stock_id').notNullable().references('id').inTable('stocks').onDelete('CASCADE');

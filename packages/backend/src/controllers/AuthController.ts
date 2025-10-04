@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt, { SignOptions } from 'jsonwebtoken';
-import { User, UserModel } from '../models/User';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { User } from '../models/User';
 import { config } from '../config';
 import { validateEmail, validatePassword } from '../utils/validation';
 import { AlphaVantageRegistrationService } from '../services/AlphaVantageRegistrationService';
-import { UserApiKey, UserApiKeyModel } from '../models/UserApiKey';
+import { UserApiKey } from '../models/UserApiKey';
+import { EmailService } from '../services/EmailService';
+import { Session } from '../models/Session';
 
 // Import the shared AuthenticatedRequest interface
 import { AuthenticatedRequest } from '../types/express';
@@ -65,6 +68,16 @@ export class AuthController {
 
       // Generate tokens
       const tokens = AuthController.generateTokens(user.id);
+
+      // Auto-send email verification
+      try {
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        await User.setEmailVerificationToken(user.id, verificationToken);
+        const emailSvc = new EmailService();
+        await emailSvc.sendVerificationEmail(email, firstName, verificationToken);
+      } catch (e) {
+        console.warn('Email verification send failed (continuing):', e);
+      }
 
       // Automatically request Alpha Vantage API key for new user
       let apiKeyStatus = null;
@@ -143,6 +156,24 @@ export class AuthController {
         };
       }
 
+      // Create initial session for refresh token
+      try {
+        const refreshTtlDays = 30;
+        const expiresAt = new Date(Date.now() + refreshTtlDays * 24 * 60 * 60 * 1000);
+        await Session.createSession({
+          user_id: user.id,
+          refresh_token: tokens.refreshToken,
+          device_type: (req.body?.deviceType || 'unknown'),
+          device_name: (req.body?.deviceName || ''),
+          user_agent: (req.headers['user-agent'] as string) || '',
+          ip_address: req.ip || '',
+          location: (req.body?.location || ''),
+          expires_at: expiresAt
+        });
+      } catch (e) {
+        console.warn('Failed to create session on register (continuing):', e);
+      }
+
       res.status(201).json({
         success: true,
         message: 'User registered successfully',
@@ -206,6 +237,24 @@ export class AuthController {
       // Generate tokens
       const tokens = AuthController.generateTokens(user.id);
 
+      // Create session for refresh token
+      try {
+        const refreshTtlDays = 30; // align with config.jwt.refreshExpiresIn default '30d'
+        const expiresAt = new Date(Date.now() + refreshTtlDays * 24 * 60 * 60 * 1000);
+        await Session.createSession({
+          user_id: user.id,
+          refresh_token: tokens.refreshToken,
+          device_type: (req.body?.deviceType || 'unknown'),
+          device_name: (req.body?.deviceName || ''),
+          user_agent: (req.headers['user-agent'] as string) || '',
+          ip_address: req.ip || '',
+          location: (req.body?.location || ''),
+          expires_at: expiresAt
+        });
+      } catch (e) {
+        console.warn('Failed to create session (continuing):', e);
+      }
+
       res.json({
         success: true,
         message: 'Login successful',
@@ -242,27 +291,30 @@ export class AuthController {
         return;
       }
 
-      // Verify refresh token
+      // Verify refresh token JWT
       const decoded = jwt.verify(refreshToken, config.jwt.secret) as any;
-      
-      // Find user
-      const user = await User.findById(decoded.userId);
-      if (!user) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid refresh token'
-        });
+
+      // Validate session record and expiry
+      const session = await Session.findByRefreshToken(refreshToken);
+      if (!session || !session.is_active || new Date(session.expires_at) < new Date()) {
+        res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
         return;
       }
 
-      // Generate new tokens
+      // Find user
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        res.status(401).json({ success: false, message: 'Invalid refresh token' });
+        return;
+      }
+
+      // Update session last used
+      await Session.updateLastUsed(session.id, (req.ip || undefined) as any);
+
+      // Generate new tokens (keep same session)
       const tokens = AuthController.generateTokens(user.id);
 
-      res.json({
-        success: true,
-        message: 'Token refreshed successfully',
-        data: tokens
-      });
+      res.json({ success: true, message: 'Token refreshed successfully', data: tokens });
     } catch (error) {
       console.error('Token refresh error:', error);
       res.status(401).json({
@@ -272,21 +324,64 @@ export class AuthController {
     }
   }
 
-  // Logout user
+  // Logout user (optional: revoke provided refresh token session)
   static async logout(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      // For now, just return success
-      // In a full implementation, we would invalidate the refresh token
-      res.json({
-        success: true,
-        message: 'Logged out successfully'
-      });
+      const { refreshToken } = (req.body || {}) as { refreshToken?: string };
+      if (refreshToken) {
+        const session = await Session.findByRefreshToken(refreshToken);
+        if (session && req.user?.id && session.user_id === req.user.id) {
+          await Session.deactivateSession(session.id);
+        }
+      }
+      res.json({ success: true, message: 'Logged out successfully' });
     } catch (error) {
       console.error('Logout error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+
+  // List current user's sessions
+  static async listSessions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.id) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+      const sessions = await Session.getUserSessions(req.user.id, false);
+      res.json({ success: true, data: { sessions } });
+    } catch (error) {
+      console.error('List sessions error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Revoke a session by id
+  static async revokeSession(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.id) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+      const { id } = req.params as { id: string };
+      if (!id) {
+        res.status(400).json({ success: false, message: 'Session id is required' });
+        return;
+      }
+
+      // Ensure the session belongs to the user
+      const session = await Session.findOne<{ id: string; user_id: string }>({ id });
+      if (!session || session.user_id !== req.user.id) {
+        res.status(404).json({ success: false, message: 'Session not found' });
+        return;
+      }
+
+      await Session.deactivateSession(id);
+      res.json({ success: true, message: 'Session revoked' });
+    } catch (error) {
+      console.error('Revoke session error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
 
@@ -294,7 +389,7 @@ export class AuthController {
   static async getCurrentUser(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
-      
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -348,6 +443,7 @@ export class AuthController {
       { userId, type: 'refresh' },
       secret,
       { expiresIn: config.jwt.refreshExpiresIn }
+
     );
 
     return {
@@ -356,4 +452,129 @@ export class AuthController {
       expiresIn: config.jwt.expiresIn
     };
   }
+
+  // Send password reset link
+  static async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+      if (!validateEmail(email)) {
+        res.status(400).json({ success: false, message: 'Invalid email' });
+        return;
+      }
+
+      // Always respond success to avoid email enumeration
+      const user = await User.findByEmail(email);
+      if (user) {
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+        await User.setPasswordResetToken(email, token, expiresAt);
+        const emailSvc = new EmailService();
+        await emailSvc.sendPasswordResetEmail(email, token);
+      }
+
+      res.json({ success: true, message: 'If the email exists, a reset link has been sent' });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Reset password with token
+  static async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, password } = req.body;
+      if (!token || !validatePassword(password)) {
+        res.status(400).json({ success: false, message: 'Invalid token or password' });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const updated = await User.resetPassword(token, passwordHash);
+      if (!updated) {
+        res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+        return;
+      }
+      res.json({ success: true, message: 'Password reset successful' });
+    } catch (error) {
+      console.error('Reset password error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Change password for authenticated user
+  static async changePassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+      const { currentPassword, newPassword } = req.body;
+      if (!validatePassword(newPassword)) {
+        res.status(400).json({ success: false, message: 'New password does not meet requirements' });
+        return;
+      }
+      const user = await User.findById(userId);
+      if (!user) {
+        res.status(404).json({ success: false, message: 'User not found' });
+        return;
+      }
+      const ok = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!ok) {
+        res.status(400).json({ success: false, message: 'Current password is incorrect' });
+        return;
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await User.updateById(userId, { password_hash: passwordHash });
+      res.json({ success: true, message: 'Password changed successfully' });
+    } catch (error) {
+      console.error('Change password error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Verify email using token
+  static async verifyEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        res.status(400).json({ success: false, message: 'Verification token is required' });
+        return;
+      }
+      const updated = await User.verifyEmail(token);
+      if (!updated) {
+        res.status(400).json({ success: false, message: 'Invalid verification token' });
+        return;
+      }
+      res.json({ success: true, message: 'Email verified successfully' });
+    } catch (error) {
+      console.error('Verify email error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Resend verification email
+  static async resendVerification(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+      if (!validateEmail(email)) {
+        res.status(400).json({ success: false, message: 'Invalid email' });
+        return;
+      }
+      const user = await User.findByEmail(email);
+      // Always respond success to avoid enumeration
+      if (user && !user.email_verified) {
+        const token = crypto.randomBytes(32).toString('hex');
+        await User.setEmailVerificationToken(user.id, token);
+        const emailSvc = new EmailService();
+        await emailSvc.sendVerificationEmail(email, user.first_name, token);
+      }
+      res.json({ success: true, message: 'If the email exists, a verification link has been sent' });
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+
 }

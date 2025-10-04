@@ -18,8 +18,15 @@ const config = {
       path.resolve(__dirname, 'node_modules'),
       path.resolve(__dirname, '../../node_modules'),
     ],
-    platforms: [...defaultConfig.resolver.platforms, 'android', 'ios'],
+    platforms: ['ios', 'android', 'native'],
   },
 };
 
-module.exports = mergeConfig(defaultConfig, config);
+const merged = mergeConfig(defaultConfig, config);
+// Debug: print platforms so we can see what's going on during bundling
+if (process.env.RN_PRINT_PLATFORMS === '1') {
+  console.log('metro.default.platforms =', defaultConfig?.resolver?.platforms);
+  console.log('metro.merged.platforms   =', merged?.resolver?.platforms);
+}
+
+module.exports = merged;

@@ -9,6 +9,7 @@ import com.android.build.OutputFile
 react {
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '..'
+    // Root at the app package so RN CLI picks up its config
     root = file("../..")
     //   The folder where the react-native NPM package is. Default is ../node_modules/react-native
     reactNativeDir = file("../../../node_modules/react-native")
@@ -16,16 +17,21 @@ react {
     codegenDir = file("../../../node_modules/react-native-codegen")
     //   The cli.js file which is the React Native CLI entrypoint. Default is ../node_modules/react-native/cli.js
     cliFile = file("../../../node_modules/react-native/cli.js")
+    // Ensure bundler entry points to the app when root is repo root
+    entryFile = file("../../index.js")
+
+    // Point Metro to the app's metro config while root is repo root
+    bundleConfig = file("../../metro.config.js")
+
 
     /* Variants */
-    //   The list of variants to that are debuggable. For those we're going to
-    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
-    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    debuggableVariants = ["debug", "release"]
+    //   The list of variants that are debuggable. Bundling is skipped for these.
+    //   Keep only 'debug' so release builds embed the JS bundle.
+    debuggableVariants = ["debug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
-    // nodeExecutableAndArgs = ["node"]
+    nodeExecutableAndArgs = ["node", "-r", "$rootDir/../scripts/rn-node-setup.js"]
     //
     //   The command to run when bundling. Default is 'bundle'
     // bundleCommand = "ram-bundle"
@@ -45,8 +51,7 @@ react {
 
     /* Hermes Commands */
     //   The hermes command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
-    //
+    hermesCommand = "$rootDir/../../../node_modules/react-native/sdks/hermesc/osx-bin/hermesc"
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
 }
@@ -57,7 +62,7 @@ react {
  * use App Bundles (https://developer.android.com/guide/app-bundle/)
  * and want to have separate APKs to upload to the Play Store.
  */
-def enableSeparateBuildPerCPUArchitecture = false
+def enableSeparateBuildPerCPUArchitecture = true
 
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
@@ -129,6 +134,13 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    // Force extraction of JNI libs to filesystem to avoid dlopen issues on some devices
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
 
     // applicationVariants are e.g. debug, release
     applicationVariants.all { variant ->
@@ -159,11 +171,9 @@ dependencies {
     }
 
     debugImplementation("com.facebook.flipper:flipper-fresco-plugin:${FLIPPER_VERSION}")
-    if (hermesEnabled.toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
-    } else {
-        implementation jscFlavor
-    }
+    // Include both Hermes and JSC so runtime can fall back safely on all ABIs
+    implementation("com.facebook.react:hermes-android")
+    implementation jscFlavor
 }
 
 // apply from: file("../../../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)

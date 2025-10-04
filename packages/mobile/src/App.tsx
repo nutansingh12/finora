@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, FlatList} from 'react-native';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-import AsyncStorageMock from './utils/AsyncStorageMock';
 import { StockChartModal } from './components/StockChartModal';
 import { StockService } from './services/StockService';
 import { ApiService } from './services/ApiService';
@@ -12,6 +10,22 @@ import { API_BASE_URL } from './config/constants';
 console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
 
 // Simple historical data service to prevent crashes
+// Robust AsyncStorage import with fallback polyfill to avoid native crash if autolink fails
+let AsyncStorage: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AsyncStorage = require('@react-native-async-storage/async-storage').default;
+} catch (e) {
+  console.warn('[@RNC/AsyncStorage] not linked; using in-memory polyfill');
+  const __mem = new Map<string, string>();
+  AsyncStorage = {
+    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+    async setItem(key: string, value: string) { __mem.set(key, value); },
+    async removeItem(key: string) { __mem.delete(key); },
+    async clear() { __mem.clear(); },
+  } as const;
+}
+
 const historicalDataService = {
   async fetchHistoricalData(symbol: string, period: string) {
     return { data: [] };
@@ -48,7 +62,7 @@ const SORTING_OPTIONS = [
 const SafeStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
-      return await AsyncStorageMock.getItem(key);
+      return await AsyncStorage.getItem(key);
     } catch (error) {
       console.warn('Storage getItem failed, using fallback:', error);
       return null;
@@ -57,7 +71,7 @@ const SafeStorage = {
 
   async setItem(key: string, value: string): Promise<void> {
     try {
-      await AsyncStorageMock.setItem(key, value);
+      await AsyncStorage.setItem(key, value);
       console.log('✅ Storage saved:', key, `${value.length} chars`);
     } catch (error) {
       console.warn('Storage setItem failed, using fallback:', error);
@@ -460,7 +474,7 @@ const App: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${email}` // Use proper auth token
+          'Authorization': `Bearer ${ApiService.getAuthToken() ?? ''}`
         },
         body: JSON.stringify({ watchlist: data })
       });
@@ -769,8 +783,8 @@ const App: React.FC = () => {
     ];
 
     // Check for duplicates
-    const newStocks = [];
-    const duplicates = [];
+    const newStocks: any[] = [];
+    const duplicates: string[] = [];
 
     demoStocks.forEach(demoStock => {
       const existingStock = watchlist.find(stock => stock.symbol === demoStock.symbol);
@@ -969,10 +983,13 @@ const App: React.FC = () => {
         }
 
         // Auto-login after successful registration
-        ApiService.setAuthToken(data.token);
-        await SafeStorage.setItem('finora_auth_token', data.token);
-        await SafeStorage.setItem('finora_api_key', data.apiKey);
-        await SafeStorage.setItem('finora_user', JSON.stringify(data.user));
+        const tokens = (data?.data?.tokens || data?.tokens || {});
+        const user = (data?.data?.user || data?.user);
+        await ApiService.setTokens(tokens.accessToken, tokens.refreshToken);
+        if (tokens.accessToken) await SafeStorage.setItem('finora_auth_token', tokens.accessToken);
+        if (tokens.refreshToken) await SafeStorage.setItem('finora_refresh_token', tokens.refreshToken);
+        if (data?.data?.apiKey) await SafeStorage.setItem('finora_api_key', data.data.apiKey);
+        if (user) await SafeStorage.setItem('finora_user', JSON.stringify(user));
 
         setIsAuthenticated(true);
 
@@ -1042,26 +1059,38 @@ const App: React.FC = () => {
 
       console.log('📡 Login response status:', response.status);
 
-      const data = await response.json();
-      console.log('📦 Login response data:', JSON.stringify(data));
+      let data: any = null;
+      let text: string | null = null;
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+        console.log('📦 Login response data:', JSON.stringify(data));
+      } else {
+        text = await response.text();
+        console.log('📦 Login response text:', text?.slice(0, 200));
+      }
 
-      if (response.ok && data.success) {
-        // Set the authentication tokens
-        ApiService.setAuthToken(data.token);
+      if (response.ok && data?.success) {
+        const tokens = (data?.data?.tokens || data?.tokens || {});
+        const user = (data?.data?.user || data?.user);
 
-        // Store tokens and user info securely
-        await SafeStorage.setItem('finora_auth_token', data.token);
-        await SafeStorage.setItem('finora_api_key', data.apiKey);
-        await SafeStorage.setItem('finora_user', JSON.stringify(data.user));
+        // Set and persist tokens
+        await ApiService.setTokens(tokens.accessToken, tokens.refreshToken);
+        if (tokens.accessToken) await SafeStorage.setItem('finora_auth_token', tokens.accessToken);
+        if (tokens.refreshToken) await SafeStorage.setItem('finora_refresh_token', tokens.refreshToken);
+        if (data?.data?.apiKey) await SafeStorage.setItem('finora_api_key', data.data.apiKey);
+        if (user) await SafeStorage.setItem('finora_user', JSON.stringify(user));
 
         setIsAuthenticated(true);
 
         // Load user's groups from backend
         await loadUserGroups();
 
-        Alert.alert('Welcome!', `Hello ${data.user.firstName}! You're now logged in.`);
+        Alert.alert('Welcome!', `Hello ${data.user?.firstName || ''}! You're now logged in.`);
       } else {
-        Alert.alert('Login Failed', data.message || 'Invalid email or password. Please try again.');
+        const msg = (data && data.message)
+          || (text ? `HTTP ${response.status}: ${text.slice(0, 200)}` : `HTTP ${response.status}`);
+        Alert.alert('Login Failed', msg);
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -1076,10 +1105,11 @@ const App: React.FC = () => {
     try {
       // Clear stored authentication
       await SafeStorage.setItem('finora_auth_token', '');
+      await SafeStorage.setItem('finora_refresh_token', '');
       await SafeStorage.setItem('finora_user', '');
 
-      // Clear API service token
-      ApiService.clearAuthToken();
+      // Clear API service tokens
+      await ApiService.clearTokens();
 
       // Reset app state
       setIsAuthenticated(false);
@@ -1651,6 +1681,7 @@ const App: React.FC = () => {
         {/* User Info and Actions Bar */}
         <View style={styles.userBar}>
           <View style={styles.userInfo}>
+            <Text style={styles.appTitle}>Finora</Text>
             <Text style={styles.username}>👤 {email || 'User'}</Text>
           </View>
           <View style={styles.userActions}>
@@ -1661,9 +1692,10 @@ const App: React.FC = () => {
               // Refresh the app data
               loadCustomGroupsFromStorage();
               loadWatchlistFromStorage();
+              refreshStockData();
               Alert.alert('Refreshed', 'Data refreshed successfully!');
             }}>
-              <Text style={styles.userActionButtonText}>�</Text>
+              <Text style={styles.userActionButtonText}>🔄</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.userActionButton} onPress={handleLogout}>
               <Text style={styles.userActionButtonText}>🚪</Text>
@@ -1678,7 +1710,7 @@ const App: React.FC = () => {
               style={styles.searchBar}
               onPress={() => setShowSearch(true)}
             >
-              <Text style={styles.searchPlaceholder}>🔍 Search stocks & ETFs...</Text>
+              <Text style={styles.searchPlaceholder}>🔍 Search stocks & ETFs (Finora)…</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
@@ -1687,6 +1719,9 @@ const App: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity style={styles.stackedActionButton} onPress={importFromCSV}>
               <Text style={styles.stackedActionButtonText}>📥</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={refreshStockData}>
+              <Text style={styles.stackedActionButtonText}>🔄</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1764,7 +1799,7 @@ const App: React.FC = () => {
                 style={styles.refreshButton}
                 onPress={refreshStockData}
               >
-                <Text style={styles.refreshButtonText}>🔄 Refresh</Text>
+                <Text style={styles.refreshButtonText}>🔄</Text>
               </TouchableOpacity>
               <Text style={styles.enhancedSummaryText}>
                 {currentStocks.length} stocks • {stocksWithAlerts.length} alerts
@@ -2400,9 +2435,9 @@ const styles = StyleSheet.create({
   // Watchlist Screen Styles
   dashboardHeader: {
     backgroundColor: '#1A1A1A',
-    paddingTop: 10,
+    paddingTop: 6,
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -2410,7 +2445,7 @@ const styles = StyleSheet.create({
   // User Bar Styles
   userBar: {
     backgroundColor: '#2D3748',
-    paddingVertical: 12,
+    paddingVertical: 6,
     paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2420,11 +2455,20 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   username: {
     color: '#E2E8F0',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  appTitle: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '700',
+    marginRight: 8,
   },
   userActions: {
     flexDirection: 'row',
@@ -2433,15 +2477,15 @@ const styles = StyleSheet.create({
   },
   userActionButton: {
     backgroundColor: '#4A5568',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
   },
   userActionButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#E2E8F0',
   },
 
@@ -2672,15 +2716,15 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     backgroundColor: '#2A2A2A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#404040',
   },
   searchPlaceholder: {
     color: '#888888',
-    fontSize: 16,
+    fontSize: 14,
   },
   headerActions: {
     flexDirection: 'row',
@@ -2701,17 +2745,17 @@ const styles = StyleSheet.create({
   },
   stackedActionButton: {
     backgroundColor: '#2A2A2A',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#404040',
-    minWidth: 36,
+    minWidth: 28,
     alignItems: 'center',
   },
   stackedActionButtonText: {
     color: '#CCCCCC',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
 
@@ -3018,22 +3062,23 @@ const styles = StyleSheet.create({
   // Enhanced Tabs
   enhancedTabsSection: {
     backgroundColor: '#0F0F0F',
-    paddingVertical: 8,
+    paddingVertical: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#333333',
   },
   tabsScrollContent: {
     paddingHorizontal: 20,
-    gap: 8,
+    gap: 6,
   },
   enhancedTab: {
     backgroundColor: '#1E1E1E',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#333333',
-    minWidth: 140,
+    minWidth: 0,
+    minHeight: 28,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -3053,7 +3098,7 @@ const styles = StyleSheet.create({
   },
   enhancedTabText: {
     color: '#CCCCCC',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
   },
   enhancedActiveTabText: {
@@ -3192,7 +3237,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   enhancedSummaryStats: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   enhancedSummaryText: {
     color: '#888888',
@@ -3622,15 +3669,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   refreshButton: {
-    backgroundColor: '#00FF88',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
-    marginRight: 12,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#00FF88',
   },
   refreshButtonText: {
-    color: '#000000',
-    fontSize: 12,
+    color: '#00FF88',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

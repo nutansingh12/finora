@@ -11,11 +11,12 @@
     "build:android": "cd android && ./gradlew assembleRelease",
     "build:android:debug": "cd android && ./gradlew assembleDebug",
     "clean:android": "cd android && ./gradlew clean",
-    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res"
+    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res",
+    "bundle:native": "react-native bundle --platform native --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
-    "@react-native-community/cli-platform-android": "^20.0.2",
+    "@react-native-community/cli-platform-android": "^11.3.7",
     "@react-native-community/cli-platform-ios": "^11.3.7",
     "axios": "^1.12.2",
     "react": "18.2.0",

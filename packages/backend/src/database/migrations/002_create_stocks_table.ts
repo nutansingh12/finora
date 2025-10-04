@@ -1,6 +1,8 @@
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
+  const exists = await knex.schema.hasTable('stocks');
+  if (exists) return;
   return knex.schema.createTable('stocks', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('symbol').unique().notNullable();

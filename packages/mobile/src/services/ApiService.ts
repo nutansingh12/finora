@@ -1,5 +1,19 @@
 import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse} from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Safe AsyncStorage import with in-memory fallback (avoids native crash if not linked)
+let AsyncStorage: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AsyncStorage = require('@react-native-async-storage/async-storage').default;
+} catch (e) {
+  const __mem = new Map<string, string>();
+  AsyncStorage = {
+    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+    async setItem(key: string, value: string) { __mem.set(key, value); },
+    async removeItem(key: string) { __mem.delete(key); },
+    async multiRemove(keys: string[]) { keys.forEach(k => __mem.delete(k)); },
+    async clear() { __mem.clear(); },
+  } as const;
+}
 import {API_BASE_URL} from '../config/constants';
 
 class ApiServiceClass {
@@ -74,8 +88,25 @@ class ApiServiceClass {
     this.authToken = token;
   }
 
+  async setTokens(accessToken: string, refreshToken?: string) {
+    this.setAuthToken(accessToken);
+    try {
+      await AsyncStorage.setItem('accessToken', accessToken);
+      if (refreshToken) await AsyncStorage.setItem('refreshToken', refreshToken);
+    } catch {}
+  }
+
   clearAuthToken() {
     this.authToken = null;
+  }
+
+  async clearTokens() {
+    try { await AsyncStorage.multiRemove(['accessToken','refreshToken']); } catch {}
+    this.clearAuthToken();
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
