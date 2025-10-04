@@ -1,0 +1,26 @@
+name: Alerts Tick (every 5 minutes)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call alerts-tick endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BACKEND_URL: https://finora-backend-qwg4.vercel.app
+        run: |
+          set -euo pipefail
+          URL="$BACKEND_URL/api/jobs/alerts-tick"
+          if [ -n "${CRON_SECRET:-}" ]; then
+            curl -sS -f -X GET "$URL" -H "x-cron-secret: $CRON_SECRET"
+          else
+            echo "Warning: CRON_SECRET is not set; calling without auth header"
+            curl -sS -f -X GET "$URL"
+          fi
+          echo "OK"
+
