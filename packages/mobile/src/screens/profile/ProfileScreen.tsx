@@ -11,9 +11,15 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useAuth} from '../../store/AuthContext';
 import {FeedbackButton} from '../../components/feedback/FeedbackButton';
+import {useNavigation} from '@react-navigation/native';
+import type {MainStackParamList} from '../../navigation/MainNavigator';
+import type {StackNavigationProp} from '@react-navigation/stack';
+
+type Nav = StackNavigationProp<MainStackParamList, 'MainTabs'>;
 
 export const ProfileScreen: React.FC = () => {
   const theme = useTheme();
+  const navigation = useNavigation<Nav>();
   const {user, logout} = useAuth();
 
   const handleLogout = async () => {
@@ -57,10 +63,7 @@ export const ProfileScreen: React.FC = () => {
               title="Change Password"
               left={() => <List.Icon icon="lock" />}
               right={() => <List.Icon icon="chevron-right" />}
-              onPress={() => {
-                // TODO: Navigate to change password
-                console.log('Change password');
-              }}
+              onPress={() => navigation.navigate('ChangePassword')}
             />
             <List.Item
               title="Notification Settings"

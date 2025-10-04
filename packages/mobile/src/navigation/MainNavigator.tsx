@@ -9,6 +9,7 @@ import {PortfolioScreen} from '../screens/portfolio/PortfolioScreen';
 import {SearchScreen} from '../screens/search/SearchScreen';
 import {AlertsScreen} from '../screens/alerts/AlertsScreen';
 import {ProfileScreen} from '../screens/profile/ProfileScreen';
+import {ChangePasswordScreen} from '../screens/profile/ChangePasswordScreen';
 import {StockDetailsScreen} from '../screens/stock/StockDetailsScreen';
 import {AddStockScreen} from '../screens/stock/AddStockScreen';
 import {EditStockScreen} from '../screens/stock/EditStockScreen';
@@ -25,6 +26,7 @@ export type MainStackParamList = {
   StockDetails: {symbol: string; stockId?: string};
   AddStock: {symbol?: string};
   EditStock: {stockId: string};
+  ChangePassword: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -92,6 +94,11 @@ export const MainNavigator: React.FC = () => {
         name="EditStock"
         component={EditStockScreen}
         options={{title: 'Edit Stock'}}
+      />
+      <Stack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{title: 'Change Password'}}
       />
     </Stack.Navigator>
   );

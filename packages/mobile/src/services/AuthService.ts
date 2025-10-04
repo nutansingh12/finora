@@ -50,19 +50,19 @@ class AuthServiceClass {
   // Authentication Methods
   async login(email: string, password: string): Promise<LoginResponse> {
     try {
-      const response = await ApiService.post<LoginResponse>('/auth/login', {
+      const { data } = await ApiService.post<LoginResponse>('/auth/login', {
         email,
         password,
       });
 
       // Store tokens
-      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.accessToken);
-      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
-      
-      // Set API token
-      ApiService.setAuthToken(response.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refreshToken);
 
-      return response;
+      // Set API token
+      ApiService.setAuthToken(data.accessToken);
+
+      return data;
     } catch (error: any) {
       console.error('Login error:', error);
       throw new Error(error.response?.data?.message || 'Login failed');
@@ -71,16 +71,16 @@ class AuthServiceClass {
 
   async register(data: RegisterRequest): Promise<RegisterResponse> {
     try {
-      const response = await ApiService.post<RegisterResponse>('/auth/register', data);
+      const { data: res } = await ApiService.post<RegisterResponse>('/auth/register', data);
 
       // Store tokens
-      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.accessToken);
-      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
-      
-      // Set API token
-      ApiService.setAuthToken(response.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, res.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, res.refreshToken);
 
-      return response;
+      // Set API token
+      ApiService.setAuthToken(res.accessToken);
+
+      return res;
     } catch (error: any) {
       console.error('Registration error:', error);
       throw new Error(error.response?.data?.message || 'Registration failed');
@@ -106,18 +106,18 @@ class AuthServiceClass {
         throw new Error('No refresh token available');
       }
 
-      const response = await ApiService.post<RefreshTokenResponse>('/auth/refresh', {
+      const { data } = await ApiService.post<RefreshTokenResponse>('/auth/refresh', {
         refreshToken,
       });
 
       // Update stored tokens
-      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.accessToken);
-      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
-      
-      // Set new API token
-      ApiService.setAuthToken(response.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refreshToken);
 
-      return response;
+      // Set new API token
+      ApiService.setAuthToken(data.accessToken);
+
+      return data;
     } catch (error: any) {
       console.error('Token refresh error:', error);
       await this.clearAuthData();
@@ -127,8 +127,8 @@ class AuthServiceClass {
 
   async getCurrentUser(): Promise<User> {
     try {
-      const response = await ApiService.get<User>('/auth/me');
-      return response;
+      const { data } = await ApiService.get<User>('/auth/me');
+      return data;
     } catch (error: any) {
       console.error('Get current user error:', error);
       throw new Error('Failed to get user data');
