@@ -1022,6 +1022,33 @@ const App: React.FC = () => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    try {
+      if (!email.trim()) {
+        Alert.alert('Forgot Password', 'Please enter your email above first.');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        Alert.alert('Forgot Password', 'Please enter a valid email address.');
+        return;
+      }
+      const resp = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const data = await resp.json().catch(() => ({} as any));
+      if (resp.ok) {
+        Alert.alert('Email Sent', 'Please check your email for password reset instructions.');
+      } else {
+        Alert.alert('Request Failed', (data as any)?.message || `HTTP ${resp.status}`);
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to send reset email');
+    }
+  };
+
   const handleLogin = async () => {
     try {
       // Validate input
@@ -2122,6 +2149,15 @@ const App: React.FC = () => {
             onChangeText={setPassword}
             secureTextEntry
           />
+
+          {!showRegister && (
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={handleForgotPassword}
+            >
+              <Text style={styles.linkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          )}
 
           {showRegister && (
             <>

@@ -33,7 +33,7 @@ export const ForgotPasswordScreen: React.FC<Props> = ({navigation}) => {
   const onSubmit = async (data: ForgotPasswordFormData) => {
     try {
       setLoading(true);
-      await ApiService.post('/api/auth/forgot-password', {
+      await ApiService.post('/auth/forgot-password', {
         email: data.email,
       });
       setEmailSent(true);

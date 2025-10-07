@@ -191,10 +191,16 @@ export class AuthController {
       });
     } catch (error) {
       console.error('Registration error:', error);
-      res.status(500).json({
+      // In debug mode, surface the error to help diagnose production issues quickly
+      const debug = req.headers['x-debug'] === '1' || process.env.NODE_ENV !== 'production';
+      const payload: any = {
         success: false,
         message: 'Internal server error'
-      });
+      };
+      if (debug) {
+        payload.error = (error as any)?.message || String(error);
+      }
+      res.status(500).json(payload);
     }
   }
 
