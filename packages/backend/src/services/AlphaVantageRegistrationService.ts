@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config';
 import { UserModel } from '../models/User';
+import { BackupApiKeysService } from './BackupApiKeysService';
 
 export interface ApiKeyRegistrationData {
   firstName: string;
@@ -70,6 +71,19 @@ export class AlphaVantageRegistrationService {
           apiKey: sharedKey,
           message: 'Using shared Alpha Vantage API key as fallback',
           registrationId: `fallback_${Date.now()}`
+        };
+      }
+
+      // Try backup_api_keys table if available
+      const backupKey = await BackupApiKeysService.fetchBackupKey('alpha_vantage');
+      if (backupKey) {
+        console.warn(`⚠️ Using backup_api_keys fallback for ${user.email}`);
+        await this.storeUserApiKey(user.id, backupKey);
+        return {
+          success: true,
+          apiKey: backupKey,
+          message: 'Using backup_api_keys fallback',
+          registrationId: `backup_${Date.now()}`
         };
       }
 
@@ -281,13 +295,16 @@ export class AlphaVantageRegistrationService {
       const cookies = pageResponse.headers['set-cookie'] || [];
       const cookieHeader = cookies.map((c: string) => c.split(';')[0]).join('; ');
 
-      // Step 2: Submit registration form
+      // Map user type to the exact allowed options on the Alpha Vantage form
+      const allowed = ['Investor', 'Software Developer', 'Educator', 'Student', 'Other'];
+      const candidate = (data.userType || '').trim();
+      const occupation = allowed.find(o => o.toLowerCase() === candidate.toLowerCase()) || 'Investor';
+
+      // Step 2: Submit registration form with the exact field names used by Alpha Vantage
       const formData = new URLSearchParams();
-      formData.append('first_text', 'deprecated');
-      formData.append('last_text', 'deprecated');
-      formData.append('occupation_text', data.jobTitle || data.userType || 'Investor');
-      formData.append('organization_text', data.organization || 'Individual Investor');
-      formData.append('email_text', data.email);
+      formData.append('occupation', occupation);
+      formData.append('organization', data.organization || 'Individual Investor');
+      formData.append('email', data.email);
       formData.append('csrfmiddlewaretoken', csrfToken);
 
       const submitResponse = await axios.post(`${this.baseUrl}/create_post/`, formData.toString(), {
@@ -300,10 +317,11 @@ export class AlphaVantageRegistrationService {
           'Origin': this.baseUrl,
           'Cookie': cookieHeader
         },
-        timeout: 20000
+        timeout: 20000,
+        validateStatus: () => true
       });
 
-      const responseText = submitResponse.data?.text || submitResponse.data?.message || JSON.stringify(submitResponse.data);
+      const responseText = submitResponse.data?.text || submitResponse.data?.message || (typeof submitResponse.data === 'string' ? submitResponse.data : JSON.stringify(submitResponse.data));
       const apiKeyMatch = responseText?.match(/\b([A-Z0-9]{16})\b/);
 
       if (apiKeyMatch && apiKeyMatch[1]) {
@@ -315,6 +333,7 @@ export class AlphaVantageRegistrationService {
         };
       }
 
+      console.warn('Alpha Vantage registration response did not include a key. Body snippet:', String(responseText).slice(0, 300));
       return { success: false, message: 'Failed to extract API key from Alpha Vantage response' };
     } catch (error) {
       console.error('Real API registration error:', error);
