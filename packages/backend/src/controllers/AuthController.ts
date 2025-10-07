@@ -140,9 +140,10 @@ export class AuthController {
           }
         } catch (error) {
           console.error('Error during API key registration:', error);
+          const debug = req.headers['x-debug'] === '1' || process.env.NODE_ENV !== 'production';
           apiKeyStatus = {
             success: false,
-            message: 'Failed to register API key due to internal error',
+            message: debug && (error as any)?.message ? `Failed to register API key: ${(error as any).message}` : 'Failed to register API key due to internal error',
             provider: 'alpha_vantage'
           };
         }
