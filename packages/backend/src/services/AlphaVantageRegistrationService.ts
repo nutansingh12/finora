@@ -57,7 +57,6 @@ export class AlphaVantageRegistrationService {
       const realResult = await this.realApiKeyRegistration(registrationData);
 
       if (realResult.success && realResult.apiKey) {
-        await this.storeUserApiKey(user.id, realResult.apiKey);
         console.log(`✅ API key registered for user: ${user.email}`);
         return realResult;
       }
@@ -78,7 +77,6 @@ export class AlphaVantageRegistrationService {
       const backupRec = await BackupApiKeysService.fetchBackupKeyRecord();
       if (backupRec) {
         console.warn(`⚠️ Using backup_api_keys fallback for ${user.email} (id=${backupRec.id})`);
-        await this.storeUserApiKey(user.id, backupRec.api_key);
         return {
           success: true,
           apiKey: backupRec.api_key,
@@ -91,7 +89,6 @@ export class AlphaVantageRegistrationService {
       if (process.env.NODE_ENV !== 'production') {
         const simulatedResult = await this.simulateApiKeyRegistration(registrationData);
         if (simulatedResult.success && simulatedResult.apiKey) {
-          await this.storeUserApiKey(user.id, simulatedResult.apiKey);
           return simulatedResult;
         }
       }
