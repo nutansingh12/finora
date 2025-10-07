@@ -75,15 +75,15 @@ export class AlphaVantageRegistrationService {
       }
 
       // Try backup_api_keys table if available
-      const backupKey = await BackupApiKeysService.fetchBackupKey('alpha_vantage');
-      if (backupKey) {
-        console.warn(`⚠️ Using backup_api_keys fallback for ${user.email}`);
-        await this.storeUserApiKey(user.id, backupKey);
+      const backupRec = await BackupApiKeysService.fetchBackupKeyRecord();
+      if (backupRec) {
+        console.warn(`⚠️ Using backup_api_keys fallback for ${user.email} (id=${backupRec.id})`);
+        await this.storeUserApiKey(user.id, backupRec.api_key);
         return {
           success: true,
-          apiKey: backupKey,
+          apiKey: backupRec.api_key,
           message: 'Using backup_api_keys fallback',
-          registrationId: `backup_${Date.now()}`
+          registrationId: `backup_${backupRec.id}`
         };
       }
 
