@@ -78,7 +78,14 @@ export const config = {
 
   // CORS Configuration
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000', 'http://localhost:8081']
+    origin: (() => {
+      const fromEnv = process.env.CORS_ORIGIN?.split(',').filter(Boolean);
+      if (fromEnv && fromEnv.length) return fromEnv;
+      const defaults = ['http://localhost:3000', 'http://localhost:8081'];
+      const fe = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://finora-ehqzochz5-ns-medias-projects.vercel.app' : '');
+      if (fe) defaults.push(fe);
+      return defaults;
+    })()
   },
 
   // WebSocket Configuration
