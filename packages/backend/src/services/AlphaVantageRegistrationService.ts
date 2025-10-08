@@ -61,6 +61,18 @@ export class AlphaVantageRegistrationService {
         return realResult;
       }
 
+      // Prefer backup_api_keys table if available (spreads usage and avoids shared-key rate limits)
+      const backupRec = await BackupApiKeysService.fetchBackupKeyRecord();
+      if (backupRec) {
+        console.warn(`⚠️ Using backup_api_keys fallback for ${user.email} (id=${backupRec.id})`);
+        return {
+          success: true,
+          apiKey: backupRec.api_key,
+          message: 'Using backup_api_keys fallback',
+          registrationId: realResult.registrationId || `backup_${backupRec.id}`
+        };
+      }
+
       // Fallback: use configured shared API key if present
       const sharedKey = config.alphaVantage.apiKey;
       if (sharedKey && sharedKey.trim()) {
@@ -69,19 +81,7 @@ export class AlphaVantageRegistrationService {
           success: true,
           apiKey: sharedKey,
           message: 'Using shared Alpha Vantage API key as fallback',
-          registrationId: `fallback_${Date.now()}`
-        };
-      }
-
-      // Try backup_api_keys table if available
-      const backupRec = await BackupApiKeysService.fetchBackupKeyRecord();
-      if (backupRec) {
-        console.warn(`⚠️ Using backup_api_keys fallback for ${user.email} (id=${backupRec.id})`);
-        return {
-          success: true,
-          apiKey: backupRec.api_key,
-          message: 'Using backup_api_keys fallback',
-          registrationId: `backup_${backupRec.id}`
+          registrationId: realResult.registrationId || `fallback_${Date.now()}`
         };
       }
 
@@ -343,6 +343,7 @@ export class AlphaVantageRegistrationService {
       }
 
       // Attempt a follow-up GET to the support page in case the key is rendered there after POST
+      let emailedLikely = /email/i.test(body);
       try {
         const followupCookies = [
           ...(submitResponse.headers['set-cookie'] || []).map((c: string) => c.split(';')[0]),
@@ -360,6 +361,7 @@ export class AlphaVantageRegistrationService {
           validateStatus: () => true
         });
         const followBody: string = typeof follow.data === 'string' ? follow.data : JSON.stringify(follow.data);
+        if (/email/i.test(followBody)) emailedLikely = true;
         for (const rx of patterns) {
           const m2 = followBody.match(rx);
           if (m2 && m2[1]) {
@@ -374,7 +376,7 @@ export class AlphaVantageRegistrationService {
       } catch {}
 
       console.warn('Alpha Vantage registration: no inline key in response. Snippet:', String(body).slice(0, 300));
-      return { success: false, message: 'Failed to extract API key from Alpha Vantage response' };
+      return { success: false, message: emailedLikely ? 'Alpha Vantage indicated a key will be emailed' : 'Failed to extract API key from Alpha Vantage response', registrationId: emailedLikely ? `av_email_${Date.now()}` : undefined };
     } catch (error) {
       console.error('Real API registration error:', error);
       return { success: false, message: 'Failed to register with Alpha Vantage' };

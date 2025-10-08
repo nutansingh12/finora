@@ -24,12 +24,13 @@ export class ApiKeyController {
       }
 
       const apiKeys = await UserApiKey.findKeysForUser(userId);
-      
+
       // Return keys without exposing the actual API key values
       const safeApiKeys = apiKeys.map(key => ({
         id: key.id,
         provider: key.provider,
         keyName: key.key_name,
+        registrationId: key.registration_id || null,
         isActive: key.is_active,
         usageStats: UserApiKey.getUsageStats(key),
         createdAt: key.created_at,
