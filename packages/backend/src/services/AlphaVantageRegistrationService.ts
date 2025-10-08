@@ -342,6 +342,37 @@ export class AlphaVantageRegistrationService {
         };
       }
 
+      // Attempt a follow-up GET to the support page in case the key is rendered there after POST
+      try {
+        const followupCookies = [
+          ...(submitResponse.headers['set-cookie'] || []).map((c: string) => c.split(';')[0]),
+          ...cookieHeader.split('; ').filter(Boolean)
+        ];
+        const followupCookieHeader = Array.from(new Set(followupCookies)).join('; ');
+        const follow = await axios.get(`${this.baseUrl}/support/`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Cookie': followupCookieHeader,
+            'Referer': `${this.baseUrl}/support/`
+          },
+          timeout: 15000,
+          validateStatus: () => true
+        });
+        const followBody: string = typeof follow.data === 'string' ? follow.data : JSON.stringify(follow.data);
+        for (const rx of patterns) {
+          const m2 = followBody.match(rx);
+          if (m2 && m2[1]) {
+            return {
+              success: true,
+              apiKey: m2[1],
+              message: 'API key successfully registered with Alpha Vantage',
+              registrationId: `av_${Date.now()}`
+            };
+          }
+        }
+      } catch {}
+
       console.warn('Alpha Vantage registration: no inline key in response. Snippet:', String(body).slice(0, 300));
       return { success: false, message: 'Failed to extract API key from Alpha Vantage response' };
     } catch (error) {
