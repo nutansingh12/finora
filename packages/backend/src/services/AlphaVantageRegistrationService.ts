@@ -308,8 +308,7 @@ export class AlphaVantageRegistrationService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json, text/javascript, */*; q=0.01',
-          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Referer': `${this.baseUrl}/support/`,
           'Origin': this.baseUrl,
           'Cookie': cookieHeader
@@ -318,19 +317,32 @@ export class AlphaVantageRegistrationService {
         validateStatus: () => true
       });
 
-      const responseText = submitResponse.data?.text || submitResponse.data?.message || (typeof submitResponse.data === 'string' ? submitResponse.data : JSON.stringify(submitResponse.data));
-      const apiKeyMatch = responseText?.match(/\b([A-Z0-9]{16})\b/);
+      const body: string = (typeof submitResponse.data === 'string')
+        ? submitResponse.data
+        : (submitResponse.data?.text || submitResponse.data?.message || JSON.stringify(submitResponse.data));
 
-      if (apiKeyMatch && apiKeyMatch[1]) {
+      const patterns = [
+        /api\s*key\s*is[:\s]*([A-Z0-9]{16})/i,
+        /api\s*key[:\s]*([A-Z0-9]{16})/i,
+        /\b([A-Z0-9]{16})\b/
+      ];
+
+      let apiKey: string | null = null;
+      for (const rx of patterns) {
+        const m = body.match(rx);
+        if (m && m[1]) { apiKey = m[1]; break; }
+      }
+
+      if (apiKey) {
         return {
           success: true,
-          apiKey: apiKeyMatch[1],
+          apiKey,
           message: 'API key successfully registered with Alpha Vantage',
           registrationId: `av_${Date.now()}`
         };
       }
 
-      console.warn('Alpha Vantage registration response did not include a key. Body snippet:', String(responseText).slice(0, 300));
+      console.warn('Alpha Vantage registration: no inline key in response. Snippet:', String(body).slice(0, 300));
       return { success: false, message: 'Failed to extract API key from Alpha Vantage response' };
     } catch (error) {
       console.error('Real API registration error:', error);

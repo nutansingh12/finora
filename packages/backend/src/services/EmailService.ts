@@ -28,7 +28,8 @@ export class EmailService {
 
   async sendVerificationEmail(email: string, firstName: string, token: string): Promise<boolean> {
     try {
-      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
+      const frontendBase = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://finora-ehqzochz5-ns-medias-projects.vercel.app' : 'http://localhost:3000');
+      const verificationUrl = `${frontendBase}/verify-email?token=${token}`;
       await this.transporter.sendMail({
         from: config.email.from,
         to: email,
@@ -52,7 +53,8 @@ export class EmailService {
 
   async sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
     try {
-      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+      const frontendBase = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://finora-ehqzochz5-ns-medias-projects.vercel.app' : 'http://localhost:3000');
+      const resetUrl = `${frontendBase}/reset-password?token=${token}`;
       await this.transporter.sendMail({
         from: config.email.from,
         to: email,
