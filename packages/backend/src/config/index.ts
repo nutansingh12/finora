@@ -82,7 +82,7 @@ export const config = {
       const fromEnv = process.env.CORS_ORIGIN?.split(',').filter(Boolean);
       if (fromEnv && fromEnv.length) return fromEnv;
       const defaults = ['http://localhost:3000', 'http://localhost:8081'];
-      const fe = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://finora.app' : '');
+      const fe = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://finora-web.vercel.app' : '');
       if (fe) defaults.push(fe);
       return defaults;
     })()
