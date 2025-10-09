@@ -16,10 +16,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (
-    email: string,
-    password: string,
-    firstName: string,
-    lastName: string,
+    data: { email: string; password: string; firstName: string; lastName: string }
   ) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<void>;
@@ -82,26 +79,18 @@ export const AuthProvider: React.FC<Props> = ({children}) => {
   };
 
   const register = async (
-    email: string,
-    password: string,
-    firstName: string,
-    lastName: string,
+    data: { email: string; password: string; firstName: string; lastName: string }
   ) => {
     try {
-      const response = await AuthService.register({
-        email,
-        password,
-        firstName,
-        lastName,
-      });
-      
+      const response = await AuthService.register(data);
+
       // Store tokens
       await AsyncStorage.setItem('accessToken', response.accessToken);
       await AsyncStorage.setItem('refreshToken', response.refreshToken);
-      
+
       // Set API token
       ApiService.setAuthToken(response.accessToken);
-      
+
       // Set user
       setUser(response.user);
     } catch (error) {
@@ -124,17 +113,12 @@ export const AuthProvider: React.FC<Props> = ({children}) => {
 
   const refreshToken = async () => {
     try {
-      const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
-      if (!storedRefreshToken) {
-        throw new Error('No refresh token available');
-      }
+      const response = await AuthService.refreshToken();
 
-      const response = await AuthService.refreshToken(storedRefreshToken);
-      
       // Update stored tokens
       await AsyncStorage.setItem('accessToken', response.accessToken);
       await AsyncStorage.setItem('refreshToken', response.refreshToken);
-      
+
       // Update API token
       ApiService.setAuthToken(response.accessToken);
     } catch (error) {

@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, StyleSheet, ScrollView, RefreshControl} from 'react-native';
+import {View, StyleSheet, ScrollView, RefreshControl, Alert} from 'react-native';
 import {
   Text,
   Card,
@@ -93,7 +93,9 @@ export const PortfolioScreen: React.FC = () => {
                 <Chip
                   selected={selectedGroup === 'all'}
                   onPress={() => setSelectedGroup('all')}
-                  style={styles.groupChip}>
+                  style={styles.groupChip}
+                  textStyle={styles.groupChipText}
+                >
                   All Stocks
                 </Chip>
                 {portfolio.groups?.map((group: any) => (
@@ -101,7 +103,9 @@ export const PortfolioScreen: React.FC = () => {
                     key={group.id}
                     selected={selectedGroup === group.id}
                     onPress={() => setSelectedGroup(group.id)}
-                    style={styles.groupChip}>
+                    style={styles.groupChip}
+                    textStyle={styles.groupChipText}
+                  >
                     {group.name}
                   </Chip>
                 ))}
@@ -164,10 +168,17 @@ const styles = StyleSheet.create({
   },
   groupsContainer: {
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   groupChip: {
     marginRight: 8,
+    height: 28,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+  },
+  groupChipText: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   emptyState: {
     margin: 16,

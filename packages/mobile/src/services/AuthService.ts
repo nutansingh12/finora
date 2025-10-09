@@ -71,19 +71,37 @@ class AuthServiceClass {
 
   async register(data: RegisterRequest): Promise<RegisterResponse> {
     try {
-      const { data: res } = await ApiService.post<RegisterResponse>('/auth/register', data);
+      const response = await ApiService.post<any>('/auth/register', data);
+      const payload = response.data; // Backend standard: { success, message, data: { user, tokens, apiKeyRegistration } }
+
+      if (!payload?.success || !payload?.data?.user || !payload?.data?.tokens) {
+        throw new Error(payload?.message || 'Registration failed');
+      }
+
+      const user: User = {
+        id: payload.data.user.id,
+        email: payload.data.user.email,
+        firstName: payload.data.user.firstName || payload.data.user.first_name,
+        lastName: payload.data.user.lastName || payload.data.user.last_name,
+        emailVerified: payload.data.user.isVerified ?? payload.data.user.email_verified,
+        createdAt: payload.data.user.createdAt || payload.data.user.created_at,
+        updatedAt: payload.data.user.updatedAt || payload.data.user.updated_at,
+      };
+
+      const accessToken = payload.data.tokens.accessToken;
+      const refreshToken = payload.data.tokens.refreshToken;
 
       // Store tokens
-      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, res.accessToken);
-      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, res.refreshToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
 
       // Set API token
-      ApiService.setAuthToken(res.accessToken);
+      ApiService.setAuthToken(accessToken);
 
-      return res;
+      return { user, accessToken, refreshToken } as RegisterResponse;
     } catch (error: any) {
       console.error('Registration error:', error);
-      throw new Error(error.response?.data?.message || 'Registration failed');
+      throw new Error(error.response?.data?.message || error?.message || 'Registration failed');
     }
   }
 

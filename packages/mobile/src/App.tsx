@@ -1747,9 +1747,6 @@ const App: React.FC = () => {
             <TouchableOpacity style={styles.stackedActionButton} onPress={importFromCSV}>
               <Text style={styles.stackedActionButtonText}>📥</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.stackedActionButton} onPress={refreshStockData}>
-              <Text style={styles.stackedActionButtonText}>🔄</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
