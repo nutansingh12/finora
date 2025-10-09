@@ -293,115 +293,15 @@ const App: React.FC = () => {
     volume: string;
     marketCap: string;
     lastUpdated: string;
-  }>>([
-    // Sample data to demonstrate the interface
-    {
-      symbol: 'MSFT',
-      name: 'Microsoft Corporation',
-      price: 378.85,
-      change: 4.12,
-      changePercent: 1.10,
-      exchange: 'NASDAQ',
-      sector: 'Technology',
-      currency: 'USD',
-      marketCap: '$2.81T',
-      cutoffPrice: 350.00,
-      target: 350.00,
-      group: 'Watchlist',
-      alerts: [],
-      week52Low: 309.45,
-      week52High: 384.30,
-      week24Low: 325.10,
-      week12Low: 340.20,
-      volume: '28.8M',
-      lastUpdated: '3m',
-      notes: '',
-      low52Week: 309.45,
-      low24Week: 325.10,
-      low12Week: 340.20
-    },
-    {
-      symbol: 'AAPL',
-      name: 'Apple Inc.',
-      price: 175.84,
-      change: -2.41,
-      changePercent: -1.35,
-      exchange: 'NASDAQ',
-      sector: 'Technology',
-      currency: 'USD',
-      marketCap: '$2.75T',
-      cutoffPrice: 150.00,
-      target: 150.00,
-      group: 'Watchlist',
-      alerts: [],
-      week52Low: 141.50,
-      week52High: 199.62,
-      week24Low: 156.78,
-      week12Low: 165.04,
-      volume: '67.8M',
-      lastUpdated: '2m',
-      notes: '',
-      low52Week: 141.50,
-      low24Week: 156.78,
-      low12Week: 165.04
-    },
-    {
-      symbol: 'GOOGL',
-      name: 'Alphabet Inc. Class A',
-      price: 138.21,
-      change: -1.23,
-      changePercent: -0.88,
-      exchange: 'NASDAQ',
-      sector: 'Technology',
-      currency: 'USD',
-      marketCap: '$1.73T',
-      cutoffPrice: 120.00,
-      target: 140.00,
-      group: 'All Stocks',
-      alerts: ['Alert'],
-      week52Low: 101.88,
-      week52High: 151.55,
-      week24Low: 116.21,
-      week12Low: 129.40,
-      volume: '34.5M',
-      lastUpdated: '1m',
-      notes: '',
-      low52Week: 101.88,
-      low24Week: 116.21,
-      low12Week: 129.40
-    },
-    {
-      symbol: 'TSLA',
-      name: 'Tesla, Inc.',
-      price: 248.87,
-      change: -3.45,
-      changePercent: -1.37,
-      exchange: 'NASDAQ',
-      sector: 'Consumer Discretionary',
-      currency: 'USD',
-      marketCap: '$789B',
-      cutoffPrice: 200.00,
-      target: 260.00,
-      group: 'All Stocks',
-      alerts: ['Alert'],
-      week52Low: 152.37,
-      week52High: 299.29,
-      week24Low: 178.82,
-      week12Low: 211.99,
-      volume: '89.1M',
-      lastUpdated: '2m',
-      notes: '',
-      low52Week: 152.37,
-      low24Week: 178.82,
-      low12Week: 211.99
-    }
-  ]);
+  }>>([]);
 
   // Database persistence
   useEffect(() => {
     console.log('Finora app started successfully!');
     loadWatchlistFromStorage();
     loadCustomGroupsFromStorage();
+    // Attempt to load server watchlist with real prices on app start
+    loadUserStocksFromBackend();
   }, []);
 
   useEffect(() => {
@@ -1405,7 +1305,8 @@ const App: React.FC = () => {
 
       Alert.alert('Success', `${selectedStock.symbol} added to watchlist!`);
     } catch (err: any) {
-      const message = err?.message || 'Failed to add stock to watchlist';
+      const serverMsg = err?.response?.data?.message;
+      const message = serverMsg || err?.message || 'Failed to add stock to watchlist';
       Alert.alert('Error', message);
       console.error('addToWatchlist error:', err);
     } finally {
@@ -1491,7 +1392,7 @@ const App: React.FC = () => {
           <View style={styles.popularStocks}>
             <Text style={styles.sectionTitle}>Popular:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {['AAPL', 'TSLA', 'NVDA', 'COIN', 'DEFI', 'DEFT', 'META', 'GOOGL'].map((symbol) => (
+              {['AAPL', 'TSLA', 'NVDA', 'MSFT', 'META', 'GOOGL', 'COIN'].map((symbol) => (
                 <TouchableOpacity
                   key={symbol}
                   style={styles.popularChip}
