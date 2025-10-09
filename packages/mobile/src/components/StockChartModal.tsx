@@ -10,6 +10,8 @@ import {
   PanResponder,
   Dimensions,
 } from 'react-native';
+import { API_BASE_URL } from '../config/constants';
+import ApiService from '../services/ApiService';
 // Temporarily remove SVG to prevent crashes
 // import Svg, { Path, Line, Text as SvgText, Circle, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -109,55 +111,30 @@ export const StockChartModal: React.FC<StockChartModalProps> = ({
   };
 
   const fetchYahooFinanceData = async (symbol: string, period: string): Promise<ChartDataPoint[]> => {
+    // Replace Yahoo with our backend market API
     try {
-      // Convert period to Yahoo Finance format
-      const periodMap: { [key: string]: string } = {
-        '1D': '1d',
-        '5D': '5d',
-        '1M': '1mo',
-        '6M': '6mo',
-        'YTD': 'ytd',
-        '1Y': '1y',
-        '5Y': '5y',
-        'MAX': 'max'
-      };
-
-      const yahooRange = periodMap[period] || '1y';
-      const interval = period === '1D' ? '5m' : period === '5D' ? '15m' : '1d';
-
-      // Use Yahoo Finance API
-      const response = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${yahooRange}&interval=${interval}&includePrePost=true&events=div%7Csplit%7Cearn&lang=en-US&region=US`,
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
+      const mapPeriodAndInterval = (p: string): { period: string; interval: string } => {
+        switch (p) {
+          case '1D': return { period: 'intraday', interval: '5min' };
+          case '5D': return { period: 'intraday', interval: '15min' };
+          case '5Y': return { period: 'weekly', interval: '1d' };
+          case 'MAX': return { period: 'monthly', interval: '1d' };
+          default: return { period: 'daily', interval: '1d' }; // 1M, 6M, YTD, 1Y
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.chart?.result?.[0]?.timestamp && data.chart?.result?.[0]?.indicators?.quote?.[0]?.close) {
-        const timestamps = data.chart.result[0].timestamp;
-        const prices = data.chart.result[0].indicators.quote[0].close;
-        const volumes = data.chart.result[0].indicators.quote[0].volume || [];
-
-        const chartData: ChartDataPoint[] = timestamps.map((timestamp: number, index: number) => ({
-          date: new Date(timestamp * 1000).toISOString(),
-          price: prices[index] || 0,
-          volume: volumes[index] || 0
-        })).filter((point: ChartDataPoint) => point.price > 0); // Filter out null prices
-
-        return chartData;
-      }
-
-      throw new Error('Invalid data format from Yahoo Finance');
+      };
+      const { period: backendPeriod, interval } = mapPeriodAndInterval(period);
+      const url = `${API_BASE_URL}/market/stock/${encodeURIComponent(symbol)}/historical?period=${backendPeriod}&interval=${interval}`;
+      const token = ApiService.getAuthToken?.() || '';
+      const resp = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const json = await resp.json();
+      if (!resp.ok || !json?.success) throw new Error(json?.message || 'Failed to load historical');
+      const prices = Array.isArray(json?.data?.prices) ? json.data.prices : [];
+      const chartData: ChartDataPoint[] = prices
+        .map((p: any) => ({ date: p.date, price: p.close ?? p.price ?? 0, volume: p.volume ?? 0 }))
+        .filter((pt: ChartDataPoint) => pt.price > 0);
+      return chartData;
     } catch (error) {
-      console.error('Yahoo Finance API error:', error);
+      console.error('Backend historical API error:', error);
       throw error;
     }
   };

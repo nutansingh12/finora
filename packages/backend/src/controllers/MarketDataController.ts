@@ -59,7 +59,7 @@ export class MarketDataController {
   static async getHistoricalData(req: Request, res: Response): Promise<void> {
     try {
       const { symbol } = req.params;
-      const { period = '1y', interval = '1d' } = req.query;
+      const { period = '1y', interval = '1d' } = req.query as { period?: string; interval?: string };
 
       if (!symbol) {
         res.status(400).json({
@@ -69,14 +69,27 @@ export class MarketDataController {
         return;
       }
 
-      // Map period to Alpha Vantage format
-      const alphaVantagePeriod = period === 'weekly' ? 'weekly' :
-                                period === 'monthly' ? 'monthly' : 'daily';
+      let prices: any[] = [];
 
-      const historicalData = await MarketDataController.alphaVantageService.getHistoricalData(
-        symbol.toUpperCase(),
-        alphaVantagePeriod as 'daily' | 'weekly' | 'monthly'
-      );
+      // Intraday support
+      if (period === 'intraday') {
+        const allowed: any = new Set(['1min','5min','15min','30min','60min']);
+        const intradayInterval = allowed.has(String(interval)) ? (String(interval) as any) : '5min';
+        prices = await MarketDataController.alphaVantageService.getIntradayData(
+          symbol.toUpperCase(),
+          intradayInterval,
+          { userId: (req as any).user?.id }
+        );
+      } else {
+        // Map period to Alpha Vantage format
+        const alphaVantagePeriod = period === 'weekly' ? 'weekly' :
+                                  period === 'monthly' ? 'monthly' : 'daily';
+        prices = await MarketDataController.alphaVantageService.getHistoricalData(
+          symbol.toUpperCase(),
+          alphaVantagePeriod as 'daily' | 'weekly' | 'monthly',
+          { userId: (req as any).user?.id }
+        );
+      }
 
       res.json({
         success: true,
@@ -84,7 +97,7 @@ export class MarketDataController {
           symbol: symbol.toUpperCase(),
           period,
           interval,
-          prices: historicalData
+          prices
         }
       });
     } catch (error) {
