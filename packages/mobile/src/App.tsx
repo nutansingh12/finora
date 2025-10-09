@@ -829,7 +829,11 @@ const App: React.FC = () => {
           alerts: [],
           lastUpdated: new Date().toISOString(),
         }));
-        setWatchlist(stocks);
+        if (stocks.length > 0) {
+          setWatchlist(stocks);
+        } else {
+          console.log('Backend returned 0 stocks; retaining current list');
+        }
       } else {
         console.error('Failed to load user stocks:', json.message);
       }
