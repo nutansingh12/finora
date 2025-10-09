@@ -80,9 +80,9 @@ export class StockPriceService {
       // Create or update rolling analysis
       await RollingAnalysis.upsertAnalysis({
         stock_id: stockId,
-        fifty_two_week_low: fiftyTwoWeekLow,
-        twenty_four_week_low: twentyFourWeekLow,
-        twelve_week_low: twelveWeekLow,
+        week_52_low: fiftyTwoWeekLow,
+        week_24_low: twentyFourWeekLow,
+        week_12_low: twelveWeekLow,
         percent_above_52w_low: percentAbove52WLow,
         percent_above_24w_low: percentAbove24WLow,
         percent_above_12w_low: percentAbove12WLow,

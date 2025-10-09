@@ -3,9 +3,9 @@ import { BaseModel } from '@/models/BaseModel';
 export interface RollingAnalysisModel {
   id: string;
   stock_id: string;
-  fifty_two_week_low: number;
-  twenty_four_week_low: number;
-  twelve_week_low: number;
+  week_52_low: number;
+  week_24_low: number;
+  week_12_low: number;
   percent_above_52w_low: number;
   percent_above_24w_low: number;
   percent_above_12w_low: number;
@@ -22,9 +22,9 @@ export class RollingAnalysis extends BaseModel {
   // Create or update rolling analysis
   static async upsertAnalysis(data: {
     stock_id: string;
-    fifty_two_week_low: number;
-    twenty_four_week_low: number;
-    twelve_week_low: number;
+    week_52_low: number;
+    week_24_low: number;
+    week_12_low: number;
     percent_above_52w_low: number;
     percent_above_24w_low: number;
     percent_above_12w_low: number;
@@ -274,9 +274,9 @@ export class RollingAnalysis extends BaseModel {
   static async updateAnalysis(
     stockId: string,
     updates: Partial<{
-      fifty_two_week_low: number;
-      twenty_four_week_low: number;
-      twelve_week_low: number;
+      week_52_low: number;
+      week_24_low: number;
+      week_12_low: number;
       percent_above_52w_low: number;
       percent_above_24w_low: number;
       percent_above_12w_low: number;
