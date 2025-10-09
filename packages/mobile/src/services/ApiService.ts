@@ -30,6 +30,14 @@ class ApiServiceClass {
     });
 
     this.setupInterceptors();
+
+    // On app start, restore access token from storage so API calls have auth
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (token) this.setAuthToken(token);
+      } catch {}
+    })();
   }
 
   private setupInterceptors() {
