@@ -242,46 +242,13 @@ const App: React.FC = () => {
     );
   };
 
-  // Function to refresh stock prices and alerts
-  const refreshStockData = () => {
-    const updatedWatchlist = watchlist.map(stock => {
-      // Simulate price updates (in real app, this would fetch from API)
-      const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% variation
-      const newPrice = stock.price * (1 + priceVariation);
-      const change = newPrice - stock.price;
-      const changePercent = (change / stock.price) * 100;
-
-      const oldAlerts = stock.alerts || [];
-      const newAlerts = updateStockAlerts({ ...stock, price: newPrice });
-
-      // Check if this is a new alert (wasn't there before)
-      const hasNewAlert =
-        newAlerts.includes('Alert') &&
-        !oldAlerts.includes('Alert') &&
-        newPrice <= stock.target &&
-        stock.target > 0;
-
-      const updatedStock = {
-        ...stock,
-        price: newPrice,
-        change: change,
-        changePercent: changePercent,
-        alerts: newAlerts,
-        lastUpdated: new Date().toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      };
-
-      // Send notification for new alerts
-      if (hasNewAlert) {
-        setTimeout(() => sendInvestmentNotification(updatedStock), 500);
-      }
-
-      return updatedStock;
-    });
-
-    setWatchlist(updatedWatchlist);
+  // Function to refresh stock prices by reloading from backend
+  const refreshStockData = async () => {
+    try {
+      await loadUserStocksFromBackend();
+    } catch (e) {
+      console.error('Failed to refresh stock data from backend:', e);
+    }
   };
 
   // Function to close chart modal
@@ -823,7 +790,7 @@ const App: React.FC = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setCustomGroups(data.data || []);
+        setCustomGroups(data.data?.groups || []);
       } else {
         console.error('Failed to load groups:', data.message);
         // Fallback to local storage
@@ -833,6 +800,41 @@ const App: React.FC = () => {
       console.error('Error loading groups:', error);
       // Fallback to local storage
       await loadCustomGroupsFromStorage();
+    }
+  };
+
+
+  // Load user's stocks from backend and map to local structure
+  const loadUserStocksFromBackend = async () => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/stocks`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ApiService.getAuthToken() ?? ''}`
+        }
+      });
+      const json = await resp.json();
+      if (resp.ok && json.success) {
+        const stocks = (json.data?.stocks || []).map((s: any) => ({
+          symbol: s.symbol,
+          name: s.name || s.symbol,
+          exchange: s.exchange || 'Unknown',
+          sector: s.sector || 'Unknown',
+          price: s.current_price ?? 0,
+          change: s.price_change ?? 0,
+          changePercent: s.price_change_percent ?? 0,
+          cutoffPrice: s.cutoff_price ?? 0,
+          target: s.target_price ?? s.cutoff_price ?? 0,
+          group: s.group_name || 'Watchlist',
+          alerts: [],
+          lastUpdated: new Date().toISOString(),
+        }));
+        setWatchlist(stocks);
+      } else {
+        console.error('Failed to load user stocks:', json.message);
+      }
+    } catch (e) {
+      console.error('Error loading user stocks:', e);
     }
   };
 
@@ -1262,7 +1264,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Google Finance-like search using reliable APIs
+  // Backend-powered search
   React.useEffect(() => {
     if (searchQuery.length < 1) {
       setSearchResults([]);
@@ -1272,118 +1274,59 @@ const App: React.FC = () => {
     setIsSearching(true);
     const timeoutId = setTimeout(async () => {
       try {
-        let results: any[] = [];
+        const token = ApiService.getAuthToken?.() || '';
+        const resp = await fetch(`${API_BASE_URL}/market/search?q=${encodeURIComponent(searchQuery)}&limit=25`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+        const json = await resp.json();
+        if (!resp.ok || !json?.success) throw new Error(json?.message || 'Search failed');
+        const baseResults = (json?.data?.results || []).map((r: any) => ({
+          symbol: r.symbol,
+          name: r.name || r.symbol,
+          exchange: r.region || '\u2014',
+          price: 0,
+          change: 0,
+          changePercent: 0,
+          marketCap: 'N/A',
+          volume: 'N/A',
+        }));
+        setSearchResults(baseResults);
 
-        // Primary: Use Yahoo Finance API (most reliable and comprehensive)
-        try {
-          const response = await fetch(
-            `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(searchQuery)}&lang=en-US&region=US&quotesCount=25&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query&multiQuoteQueryId=multi_quote_single_token_query&enableCb=true&enableNavLinks=true&enableEnhancedTrivialQuery=true`,
-            {
+        // Enrich with live quotes for top results
+        if (baseResults.length > 0) {
+          try {
+            const symbols = baseResults.slice(0, 10).map((r: any) => r.symbol);
+            const token2 = ApiService.getAuthToken?.() || '';
+            const quotesResp = await fetch(`${API_BASE_URL}/search/quotes`, {
+              method: 'POST',
               headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-              }
+                'Content-Type': 'application/json',
+                ...(token2 ? { Authorization: `Bearer ${token2}` } : {})
+              },
+              body: JSON.stringify({ symbols })
+            });
+            const quotesJson = await quotesResp.json();
+            if (quotesResp.ok && quotesJson?.success) {
+              const map: Record<string, any> = {};
+              for (const q of quotesJson.data.quotes || []) map[q.symbol] = q;
+              setSearchResults((prev: any[]) => prev.map((r: any) => map[r.symbol]
+                ? { ...r,
+                    price: map[r.symbol].price ?? r.price,
+                    change: map[r.symbol].change ?? r.change,
+                    changePercent: map[r.symbol].changePercent ?? r.changePercent,
+                    marketCap: map[r.symbol].marketCap ?? r.marketCap,
+                    volume: map[r.symbol].volume ?? r.volume }
+                : r));
             }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log('Yahoo Finance response:', data);
-
-            if (data.quotes && data.quotes.length > 0) {
-              results = data.quotes
-                .filter((quote: any) =>
-                  quote.quoteType === 'EQUITY' ||
-                  quote.quoteType === 'ETF' ||
-                  quote.typeDisp === 'Equity'
-                )
-                .slice(0, 20)
-                .map((quote: any) => ({
-                  symbol: quote.symbol,
-                  name: quote.longname || quote.shortname || quote.symbol,
-                  price: quote.regularMarketPrice || quote.regularMarketPreviousClose || 0,
-                  change: quote.regularMarketChange || 0,
-                  changePercent: quote.regularMarketChangePercent || 0,
-                  exchange: quote.fullExchangeName || quote.exchange || 'Unknown',
-                  sector: quote.sector || quote.industry || 'Unknown',
-                  currency: quote.currency || 'USD',
-                  marketCap: quote.marketCap || 0
-                }));
-            }
-          }
-        } catch (error) {
-          console.log('Yahoo Finance failed:', error);
-        }
-
-        // Fallback: Try FMP (Financial Modeling Prep) free tier
-        if (results.length === 0) {
-          try {
-            const fmpResponse = await fetch(
-              `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(searchQuery)}&limit=20&apikey=demo`
-            );
-
-            if (fmpResponse.ok) {
-              const fmpData = await fmpResponse.json();
-              console.log('FMP response:', fmpData);
-
-              if (Array.isArray(fmpData) && fmpData.length > 0) {
-                results = fmpData.slice(0, 15).map((item: any) => ({
-                  symbol: item.symbol,
-                  name: item.name,
-                  price: 0,
-                  change: 0,
-                  changePercent: 0,
-                  exchange: item.exchangeShortName || 'Unknown',
-                  sector: 'Unknown',
-                  currency: item.currency || 'USD',
-                  marketCap: 0
-                }));
-              }
-            }
-          } catch (error) {
-            console.log('FMP failed:', error);
+          } catch (e) {
+            console.warn('Quotes enrichment failed', e);
           }
         }
-
-        // Last resort: Try Polygon.io free tier
-        if (results.length === 0) {
-          try {
-            const polygonResponse = await fetch(
-              `https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(searchQuery)}&active=true&limit=20&apikey=demo`
-            );
-
-            if (polygonResponse.ok) {
-              const polygonData = await polygonResponse.json();
-              console.log('Polygon response:', polygonData);
-
-              if (polygonData.results && polygonData.results.length > 0) {
-                results = polygonData.results.slice(0, 15).map((item: any) => ({
-                  symbol: item.ticker,
-                  name: item.name,
-                  price: 0,
-                  change: 0,
-                  changePercent: 0,
-                  exchange: item.primary_exchange || 'Unknown',
-                  sector: item.sic_description || 'Unknown',
-                  currency: item.currency_name || 'USD',
-                  marketCap: item.market_cap || 0
-                }));
-              }
-            }
-          } catch (error) {
-            console.log('Polygon failed:', error);
-          }
-        }
-
-        console.log('Final results:', results);
-        setSearchResults(results);
-
       } catch (error) {
         console.error('Search failed:', error);
         setSearchResults([]);
       } finally {
         setIsSearching(false);
       }
-    }, 300); // Faster response
+    }, 250);
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
@@ -1404,33 +1347,26 @@ const App: React.FC = () => {
     setSearchResults([]); // Clear results
   };
 
-  // Fetch chart data from Alpha Vantage
+  // Fetch chart data from backend market API
   const fetchChartData = async (symbol: string) => {
     try {
-      const response = await fetch(
-        `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}&outputsize=compact`
-      );
-      const data = await response.json();
-
-      if (data['Time Series (Daily)']) {
-        const timeSeries = data['Time Series (Daily)'];
-        const chartPoints = Object.entries(timeSeries)
-          .slice(0, 30) // Last 30 days
-          .reverse()
-          .map(([date, values]: [string, any]) => ({
-            date,
-            price: parseFloat(values['4. close']),
-            high: parseFloat(values['2. high']),
-            low: parseFloat(values['3. low']),
-          }));
-
-        setChartData({
-          symbol,
-          points: chartPoints,
-          currentPrice: chartPoints[chartPoints.length - 1]?.price || 0
-        });
-        setShowChart(true);
-      }
+      const token = ApiService.getAuthToken?.() || '';
+      const resp = await fetch(`${API_BASE_URL}/market/stock/${encodeURIComponent(symbol)}/historical?period=daily&interval=1d`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const json = await resp.json();
+      if (!resp.ok || !json?.success) throw new Error(json?.message || 'Failed to load chart');
+      const prices = Array.isArray(json?.data?.prices) ? json.data.prices : [];
+      const chartPoints = prices.slice(0, 30).reverse().map((p: any) => ({
+        date: p.date,
+        price: p.close ?? p.price ?? 0,
+        high: p.high ?? p.price ?? 0,
+        low: p.low ?? p.price ?? 0,
+      }));
+      setChartData({
+        symbol,
+        points: chartPoints,
+        currentPrice: chartPoints[chartPoints.length - 1]?.price || 0
+      });
+      setShowChart(true);
     } catch (error) {
       console.error('Error fetching chart data:', error);
       Alert.alert('Error', 'Unable to load chart data');
@@ -1441,34 +1377,44 @@ const App: React.FC = () => {
     fetchChartData(stock.symbol);
   };
 
-  const addToWatchlist = () => {
+  const addToWatchlist = async () => {
     if (!selectedStock) return;
 
-    if (watchlist.find(item => item.symbol === selectedStock.symbol)) {
-      Alert.alert('Info', `${selectedStock.symbol} is already in your watchlist`);
-      return;
+    try {
+      if (watchlist.find(item => item.symbol === selectedStock.symbol)) {
+        Alert.alert('Info', `${selectedStock.symbol} is already in your watchlist`);
+        return;
+      }
+
+      const cutoffBase = Number.isFinite(selectedStock?.price) && selectedStock.price > 0 ? selectedStock.price : 100;
+      const cutoffValue = parseFloat(cutoffPrice) || calculateSmartCutoffPrice(cutoffBase);
+
+      // Persist to backend
+      await ApiService.post('/stocks', {
+        symbol: selectedStock.symbol,
+        cutoffPrice: cutoffValue,
+        targetPrice: cutoffValue,
+      });
+
+      // Reload from backend to ensure live data
+      await loadUserStocksFromBackend();
+
+      Alert.alert('Success', `${selectedStock.symbol} added to watchlist!`);
+    } catch (err: any) {
+      const message = err?.message || 'Failed to add stock to watchlist';
+      Alert.alert('Error', message);
+      console.error('addToWatchlist error:', err);
+    } finally {
+      // Reset form
+      setSelectedStock(null);
+      setCutoffPrice('');
+      setShares('');
+      setShowSearch(false);
+      setSearchQuery('');
+      setSearchResults([]);
     }
-
-    const cutoffValue = parseFloat(cutoffPrice) || calculateSmartCutoffPrice(selectedStock.price);
-    const sharesValue = shares ? parseInt(shares) : undefined;
-
-    const watchlistItem = {
-      ...selectedStock,
-      cutoffPrice: cutoffValue,
-      shares: sharesValue
-    };
-
-    setWatchlist([...watchlist, watchlistItem]);
-    Alert.alert('Success', `${selectedStock.symbol} added to watchlist!`);
-
-    // Reset form
-    setSelectedStock(null);
-    setCutoffPrice('');
-    setShares('');
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
   };
+
 
   if (isAuthenticated) {
     // Stock selection form (highest priority)
@@ -3105,18 +3051,21 @@ const styles = StyleSheet.create({
   },
   enhancedTab: {
     backgroundColor: '#1E1E1E',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 0,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#333333',
     minWidth: 0,
-    minHeight: 28,
+    height: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   enhancedActiveTab: {
     backgroundColor: '#00FF88',
@@ -3131,8 +3080,11 @@ const styles = StyleSheet.create({
   },
   enhancedTabText: {
     color: '#CCCCCC',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
+    lineHeight: 14,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   enhancedActiveTabText: {
     color: '#000000',
@@ -3141,7 +3093,7 @@ const styles = StyleSheet.create({
   enhancedTabBadge: {
     backgroundColor: '#333333',
     paddingHorizontal: 4,
-    paddingVertical: 1,
+    paddingVertical: 0,
     borderRadius: 6,
     marginLeft: 4,
   },
@@ -3152,25 +3104,34 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     fontSize: 10,
     fontWeight: '600',
+    lineHeight: 12,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   enhancedActiveTabBadgeText: {
     color: '#000000',
   },
   enhancedAddGroupButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 2,
+    backgroundColor: '#1E1E1E',
+    paddingHorizontal: 6,
+    paddingVertical: 0,
+    borderRadius: 6,
+    borderWidth: 1,
     borderColor: '#333333',
-    borderStyle: 'dashed',
-    minWidth: 140,
+    borderStyle: 'solid',
+    minWidth: 0,
+    height: 24,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
   enhancedAddGroupText: {
-    color: '#666666',
-    fontSize: 16,
+    color: '#CCCCCC',
+    fontSize: 12,
     fontWeight: '600',
+    lineHeight: 14,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 
   // Enhanced Controls
@@ -3211,7 +3172,7 @@ const styles = StyleSheet.create({
   sortingControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
   },
   enhancedSortLabel: {
     color: '#CCCCCC',

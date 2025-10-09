@@ -70,7 +70,7 @@ export class AlphaVantageService {
       .filter((key): key is string => !!key && key.trim() !== '' && key !== 'your_primary_alpha_vantage_key_here');
 
     console.log(`🔑 Alpha Vantage Service initialized with ${this.keyPool.length} API keys`);
-    
+
     if (this.keyPool.length === 0) {
       console.error('❌ No valid Alpha Vantage API keys found! Please add keys to .env file');
       throw new Error('No Alpha Vantage API keys configured');
@@ -132,14 +132,14 @@ export class AlphaVantageService {
   // Intelligent API Key Selection
   private async getAvailableApiKey(): Promise<string> {
     const now = Date.now();
-    
+
     // Find the best available key
     let bestKey: string | null = null;
     let lowestUsage = Infinity;
 
     for (const key of this.keyPool) {
       const usage = this.keyUsage.get(key)!;
-      
+
       // Skip blocked keys
       if (usage.isBlocked && usage.blockUntil && now < usage.blockUntil) {
         continue;
@@ -180,7 +180,7 @@ export class AlphaVantageService {
       const sortedKeys = Array.from(this.keyUsage.entries())
         .sort((a, b) => a[1].lastRequestTime - b[1].lastRequestTime);
       bestKey = (sortedKeys[0]?.[0] ?? this.keyPool[0] ?? config.alphaVantage.apiKey ?? '') as string;
-      
+
       // Add delay to respect rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -202,11 +202,11 @@ export class AlphaVantageService {
   private handleApiError(error: AxiosError): void {
     const response = error.response;
     const config = error.config;
-    
+
     if (response && config?.params?.apikey) {
       const apiKey = config.params.apikey;
       const usage = this.keyUsage.get(apiKey);
-      
+
       if (usage) {
         switch (response.status) {
           case 429: // Rate limit exceeded
@@ -214,20 +214,20 @@ export class AlphaVantageService {
             usage.isBlocked = true;
             usage.blockUntil = Date.now() + (60 * 1000); // Block for 1 minute
             break;
-            
+
           case 403: // Forbidden - invalid key or quota exceeded
             console.error(`❌ API key invalid or quota exceeded: ${apiKey.substring(0, 8)}...`);
             usage.isBlocked = true;
             usage.blockUntil = Date.now() + (24 * 60 * 60 * 1000); // Block for 24 hours
             break;
-            
+
           case 500: // Server error
             console.error('🔥 Alpha Vantage server error');
             break;
         }
       }
     }
-    
+
     console.error('Alpha Vantage API Error:', error.message);
   }
 
@@ -264,7 +264,7 @@ export class AlphaVantageService {
   private resetDailyUsage(): void {
     const now = Date.now();
     const oneDayMs = 24 * 60 * 60 * 1000;
-    
+
     for (const usage of this.keyUsage.values()) {
       if (now - usage.lastResetTime > oneDayMs) {
         usage.dailyRequestCount = 0;
@@ -410,6 +410,76 @@ export class AlphaVantageService {
       return [];
     }
   }
+
+  // Get intraday stock data (optionally using a user's own API key)
+  async getIntradayData(
+    symbol: string,
+    interval: '1min' | '5min' | '15min' | '30min' | '60min' = '5min',
+    opts?: { userId?: string }
+  ): Promise<AlphaVantageHistoricalData[]> {
+    try {
+      const cacheKey = `historical_${symbol.toUpperCase()}_intraday_${interval}`;
+
+      // Check cache first
+      const cachedData = this.getCachedData(cacheKey);
+      if (cachedData) {
+        return cachedData;
+      }
+
+      let params: any = {
+        function: 'TIME_SERIES_INTRADAY',
+        symbol: symbol.toUpperCase(),
+        interval,
+        outputsize: 'compact'
+      };
+
+      if (opts?.userId) {
+        const userKeyModel = await UserApiKey.findActiveKeyForUser(opts.userId, 'alpha_vantage');
+        if (userKeyModel) {
+          params.apikey = UserApiKey.getDecryptedApiKey(userKeyModel);
+        }
+      }
+
+      const response = await this.client.get('/query', { params });
+      const data = response.data;
+
+      if (data['Error Message'] || data['Note']) {
+        console.error('Alpha Vantage Error:', data['Error Message'] || data['Note']);
+        return [];
+      }
+
+      const timeSeriesKey = `Time Series (${interval})`;
+      const timeSeries = data[timeSeriesKey];
+      if (!timeSeries) {
+        return [];
+      }
+
+      const result: AlphaVantageHistoricalData[] = [];
+      for (const [date, values] of Object.entries(timeSeries)) {
+        const point = values as any;
+        result.push({
+          date,
+          open: parseFloat(point['1. open']),
+          high: parseFloat(point['2. high']),
+          low: parseFloat(point['3. low']),
+          close: parseFloat(point['4. close']),
+          volume: parseInt(point['5. volume'])
+        });
+      }
+
+      // Sort by date (newest first)
+      result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Cache the result
+      this.setCachedData(cacheKey, result);
+
+      return result;
+    } catch (error) {
+      console.error('Error fetching intraday data:', error);
+      return [];
+    }
+  }
+
 
   // Search for stocks (optionally using a user's own API key)
   async searchStocks(query: string, opts?: { userId?: string }): Promise<AlphaVantageSearchResult[]> {
