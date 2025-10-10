@@ -210,15 +210,14 @@ const App: React.FC = () => {
     setEditGroup('Watchlist');
   };
 
-  // Function to update alerts based on target vs current price
+  // Function to update alerts based on cutoff price vs current price
   const updateStockAlerts = (stock: any) => {
-    const alerts = [];
-
-    // Add alert if current price is at or below target price (investment opportunity)
-    if (stock.price <= stock.target && stock.target > 0) {
+    const alerts: string[] = [];
+    const price = Number(stock.price);
+    const cutoff = Number(stock.cutoffPrice ?? stock.target);
+    if (Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff) {
       alerts.push('Alert');
     }
-
     return alerts;
   };
 
@@ -1492,26 +1491,28 @@ const App: React.FC = () => {
       }
     });
 
-    // Add special "Alerts" group for stocks with active alerts
-    const stocksWithAlerts = watchlist.filter(stock => stock.alerts.length > 0);
-    if (stocksWithAlerts.length > 0) {
-      groups['🚨 Alerts'] = stocksWithAlerts.length;
-    }
+    // System "Alerts" group: price <= cutoffPrice (duplicates into Alerts view)
+    const alertsStocks = watchlist.filter((stock) => {
+      const price = Number(stock.price);
+      const cutoff = Number(stock.cutoffPrice);
+      return Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff;
+    });
+    const alertsCount = alertsStocks.length;
 
-    // Create tabs with "All Stocks" first, then "🚨 Alerts", then "Watchlist", then other groups
+    // Create tabs with "All Stocks", then system "Alerts", then "Watchlist", then others
     const tabs = [
       { name: 'All Stocks', count: watchlist.length },
-      ...(stocksWithAlerts.length > 0 ? [{ name: '🚨 Alerts', count: stocksWithAlerts.length }] : []),
+      { name: '🚨 Alerts', count: alertsCount },
       { name: 'Watchlist', count: groups['Watchlist'] || 0 },
       ...Object.entries(groups)
-        .filter(([name]) => name !== 'All Stocks' && name !== 'Watchlist' && name !== '🚨 Alerts')
+        .filter(([name]) => name !== 'All Stocks' && name !== 'Watchlist')
         .map(([name, count]) => ({ name, count }))
     ];
 
     const currentStocks = activeTab === 'All Stocks'
       ? watchlist
       : activeTab === '🚨 Alerts'
-        ? watchlist.filter(stock => stock.alerts.length > 0)
+        ? alertsStocks
         : watchlist.filter(stock => stock.group === activeTab);
 
     const calculateDistance = (current: number, low?: number) => {
@@ -1716,7 +1717,7 @@ const App: React.FC = () => {
                 <Text style={styles.refreshButtonText}>🔄</Text>
               </TouchableOpacity>
               <Text style={styles.enhancedSummaryText}>
-                {currentStocks.length} stocks • {stocksWithAlerts.length} alerts
+                {currentStocks.length} stocks • {alertsCount} alerts
               </Text>
             </View>
           </View>
@@ -1747,13 +1748,11 @@ const App: React.FC = () => {
                     </Text>
                   </View>
                 </View>
-                {Array.isArray(stock.alerts) && stock.alerts.length > 0 && (
+                {Number(stock.cutoffPrice) > 0 && stock.price <= stock.cutoffPrice && (
                   <View style={styles.alertBadges}>
-                    {stock.alerts.map((alert: string, i: number) => (
-                      <View key={i} style={styles.alertBadge}>
-                        <Text style={styles.alertText}>{alert}</Text>
-                      </View>
-                    ))}
+                    <View style={styles.alertBadge}>
+                      <Text style={styles.alertText}>Alert</Text>
+                    </View>
                   </View>
                 )}
               </View>
@@ -3125,8 +3124,8 @@ const styles = StyleSheet.create({
   },
   enhancedSortButton: {
     backgroundColor: '#1E1E1E',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#333333',
@@ -3153,12 +3152,12 @@ const styles = StyleSheet.create({
   },
   enhancedSortOrderButton: {
     backgroundColor: '#1E1E1E',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#333333',
-    marginLeft: 8,
+    marginLeft: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
