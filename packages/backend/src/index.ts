@@ -58,9 +58,10 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // CORS — include explicit preflight handling for browser OPTIONS requests
+// Relax CORS to allow all origins; we use token auth, no cookies, so credentials are not needed.
 const corsOptions: CorsOptions = {
-  origin: config.cors.origin,
-  credentials: true,
+  origin: (_origin, callback) => callback(null, true),
+  credentials: false,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 };
