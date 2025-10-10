@@ -1524,15 +1524,19 @@ const App: React.FC = () => {
 
 
     const calculateCutoffDistance = (current: number, cutoff: number) => {
-      return ((current - cutoff) / cutoff * 100);
+      const c = Number.isFinite(current) ? current : 0;
+      const co = Number.isFinite(cutoff) && cutoff > 0 ? cutoff : 0;
+      if (co <= 0) return 0;
+      return ((c - co) / co) * 100;
     };
 
-    const getMarketCapValue = (marketCap: string) => {
+    const getMarketCapValue = (marketCap?: string) => {
+      if (!marketCap || typeof marketCap !== 'string') return 0;
       const value = parseFloat(marketCap.replace(/[$BTM]/g, ''));
       if (marketCap.includes('T')) return value * 1000000;
       if (marketCap.includes('B')) return value * 1000;
       if (marketCap.includes('M')) return value;
-      return value;
+      return Number.isFinite(value) ? value : 0;
     };
 
     const sortedStocks = [...currentStocks].sort((a, b) => {
