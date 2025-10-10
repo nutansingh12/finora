@@ -357,9 +357,8 @@ const App: React.FC = () => {
     }
   };
 
-  const syncToCloudDatabase = async (data: any[]) => {
+  const syncToCloudDatabase = async (data: any[], attempt: number = 0): Promise<boolean> => {
     try {
-      // In production, implement API call to your backend
       const response = await fetch(`${API_BASE_URL}/watchlist`, {
         method: 'POST',
         headers: {
@@ -370,10 +369,17 @@ const App: React.FC = () => {
       });
 
       if (!response.ok) {
-        console.warn('Cloud sync failed, data saved locally');
+        throw new Error(`HTTP ${response.status}`);
       }
+      return true;
     } catch (error) {
-      console.warn('Cloud sync failed, data saved locally:', error);
+      if (attempt < 3) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+        return syncToCloudDatabase(data, attempt + 1);
+      }
+      console.warn('Cloud sync failed after retries; data saved locally');
+      return false;
     }
   };
 
