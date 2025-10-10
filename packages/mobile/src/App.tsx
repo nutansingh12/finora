@@ -1490,8 +1490,11 @@ const App: React.FC = () => {
         ? watchlist.filter(stock => stock.alerts.length > 0)
         : watchlist.filter(stock => stock.group === activeTab);
 
-    const calculateDistance = (current: number, low: number) => {
-      return ((current - low) / low * 100);
+    const calculateDistance = (current: number, low?: number) => {
+      const c = Number.isFinite(current) ? current : 0;
+      const l = typeof low === 'number' && isFinite(low) && low > 0 ? low : 0;
+      if (l <= 0) return 0;
+      return ((c - l) / l) * 100;
     };
 
     const calculateCutoffDistance = (current: number, cutoff: number) => {
