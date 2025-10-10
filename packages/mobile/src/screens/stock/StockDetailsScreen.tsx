@@ -46,24 +46,38 @@ export const StockDetailsScreen: React.FC<Props> = ({route}) => {
   const loadStockDetails = async () => {
     try {
       setLoading(true);
-      // TODO: Load from API
-      setTimeout(() => {
-        setStockDetails({
-          symbol: symbol,
-          companyName: 'Apple Inc.',
-          currentPrice: 175.43,
-          change: 2.15,
-          changePercent: 1.24,
-          marketCap: 2800000000000,
-          volume: 45678900,
-          high52Week: 198.23,
-          low52Week: 124.17,
-          peRatio: 28.5,
-          dividend: 0.96,
-          dividendYield: 0.55,
-        });
-        setLoading(false);
-      }, 1000);
+      // Fetch live quote + metadata from backend (public endpoint)
+      const resp = await (await import('../../services/ApiService')).ApiService.get(`/search/quote/${symbol}`);
+      const body: any = resp.data;
+      if (!body?.success || !body?.data) throw new Error(body?.message || 'Failed to load');
+      const stock = body.data.stock || {};
+      const quote = body.data.quote || {};
+
+      const currentPrice = Number(quote.price) || 0;
+      const change = Number(quote.change) || 0;
+      const changePercent = Number(quote.changePercent) || 0;
+      const marketCap = Number(quote.marketCap) || 0;
+      const volume = Number(quote.volume) || 0;
+      const peRatio = Number(quote.peRatio) || 0;
+      // 52W data may be null from this endpoint; fall back to today's high/low if present
+      const high52Week = Number(quote.fiftyTwoWeekHigh ?? quote.high ?? 0) || 0;
+      const low52Week = Number(quote.fiftyTwoWeekLow ?? quote.low ?? 0) || 0;
+
+      setStockDetails({
+        symbol: symbol.toUpperCase(),
+        companyName: stock.name || symbol.toUpperCase(),
+        currentPrice,
+        change,
+        changePercent,
+        marketCap,
+        volume,
+        high52Week,
+        low52Week,
+        peRatio,
+        dividend: 0,
+        dividendYield: 0,
+      });
+      setLoading(false);
     } catch (error) {
       console.error('Error loading stock details:', error);
       setLoading(false);
