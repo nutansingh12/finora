@@ -6,8 +6,18 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-    
+    // Compute robust API base URL with safe fallbacks
+    let base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').trim();
+    // If old host is configured in env, override to the active backend deployment
+    if (/^https?:\/\/finora-backend\.vercel\.app\/?$/i.test(base)) {
+      base = 'https://finora-backend-qwg4.vercel.app/api';
+    }
+    // Ensure trailing /api path exists
+    if (!/\/api(\/|$)/i.test(base)) {
+      base = base.replace(/\/$/, '') + '/api';
+    }
+    this.baseURL = base;
+
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 30000,
