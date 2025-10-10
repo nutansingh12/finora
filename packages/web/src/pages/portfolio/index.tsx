@@ -58,6 +58,53 @@ const PortfolioPage: NextPage = () => {
     fetchPortfolio,
     fetchPerformance,
   } = usePortfolioStore();
+  const [chartModal, setChartModal] = useState<{ open: boolean; symbol: string; name: string } | null>(null);
+
+  const ChartDialog = () => {
+    const [data, setData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [period, setPeriod] = useState<'1M' | '3M' | '6M' | '1Y'>('1M');
+
+    useEffect(() => {
+      const load = async () => {
+        if (!chartModal?.open) return;
+        setLoading(true);
+        try {
+          const resp = await fetch(`/api/market/stock/${chartModal.symbol}/historical?period=daily`);
+          const json = await resp.json();
+          const rows = (json?.data?.historical || []).map((r: any) => ({ date: r.date, close: Number(r.close) || 0 }));
+          setData(rows.reverse());
+        } catch (e) {
+          console.error('Failed to load chart');
+        } finally {
+          setLoading(false);
+        }
+      };
+      load();
+    }, [chartModal?.open, chartModal?.symbol, period]);
+
+    return (
+      <div>
+        {chartModal?.open && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setChartModal(null)}>
+            <div style={{ background: '#fff', width: '90%', maxWidth: 900, borderRadius: 12, padding: 16 }} onClick={(e) => e.stopPropagation()}>
+              <Typography variant="h6" gutterBottom>{chartModal.name} ({chartModal.symbol})</Typography>
+              <div style={{ width: '100%', height: 380 }}>
+                {loading ? (
+                  <Typography>Loading…</Typography>
+                ) : (
+                  <PerformanceChart data={data.map((d, i) => { const prev = i > 0 ? data[i-1].close : d.close; const change = d.close - prev; const changePercent = prev ? (change / prev) * 100 : 0; return { date: d.date, value: d.close, change, changePercent }; })} isLoading={false} height={360} />
+                )}
+              </div>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                <Button onClick={() => setChartModal(null)}>Close</Button>
+              </Box>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const [tabValue, setTabValue] = useState(0);
 
@@ -124,13 +171,39 @@ const PortfolioPage: NextPage = () => {
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={<FileDownload />}
-                onClick={() => router.push('/portfolio/export')}
-              >
-                Export
-              </Button>
+              <input id="import-file-input" type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const form = new FormData();
+                form.append('file', file);
+                try {
+                  const resp = await fetch('/api/portfolio/import', { method: 'POST', body: form });
+                  const json = await resp.json();
+                  if (json?.success) {
+                    alert(`Imported ${json.data?.successfulImports || 0} of ${json.data?.totalRows || 0}`);
+                    fetchPortfolio();
+                  } else {
+                    alert(json?.message || 'Import failed');
+                  }
+                } catch (err) {
+                  alert('Import failed');
+                }
+              }} />
+              <Button variant="outlined" startIcon={<FileDownload />} onClick={async () => {
+                try {
+                  const resp = await fetch('/api/portfolio/export');
+                  const blob = await resp.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `finora_portfolio_${new Date().toISOString().slice(0,10)}.csv`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                } catch (e) {
+                  alert('Export failed');
+                }
+              }}>Export</Button>
+              <Button variant="outlined" onClick={() => document.getElementById('import-file-input')?.click()}>Import</Button>
               <Button
                 variant="outlined"
                 startIcon={<BarChart />}
@@ -191,6 +264,7 @@ const PortfolioPage: NextPage = () => {
             <Grid item xs={12}>
               <Card>
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <ChartDialog />
                   <Tabs value={tabValue} onChange={handleTabChange} aria-label="portfolio tabs">
                     <Tab label="All Stocks" />
                     <Tab label="🚨 Alerts" />
@@ -203,7 +277,7 @@ const PortfolioPage: NextPage = () => {
                   <StockList
                     stocks={stocks}
                     isLoading={portfolioLoading}
-                    onStockClick={(stock) => router.push(`/portfolio/stock/${stock.symbol}`)}
+                    onStockClick={(stock) => setChartModal({ open: true, symbol: stock.symbol, name: (stock as any).stock?.name || stock.symbol })}
                   />
                 </TabPanel>
 

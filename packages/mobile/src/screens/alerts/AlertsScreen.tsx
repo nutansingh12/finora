@@ -9,12 +9,17 @@ import {
   IconButton,
 } from 'react-native-paper';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+
+type AlertCondition = 'above' | 'below';
+
+type AlertType = 'price' | 'percent' | 'price_below' | 'price_above' | 'target_reached' | 'cutoff_reached';
 
 interface Alert {
   id: string;
   symbol: string;
-  type: 'price' | 'percent';
-  condition: 'above' | 'below';
+  type: AlertType;
+  condition: AlertCondition;
   value: number;
   isActive: boolean;
   createdAt: string;
@@ -22,44 +27,52 @@ interface Alert {
 
 export const AlertsScreen: React.FC = () => {
   const theme = useTheme();
+  const navigation = useNavigation<any>();
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   useEffect(() => {
-    // TODO: Load alerts from API
-    setAlerts([
-      {
-        id: '1',
-        symbol: 'AAPL',
-        type: 'price',
-        condition: 'above',
-        value: 200,
-        isActive: true,
-        createdAt: '2024-01-15',
-      },
-      {
-        id: '2',
-        symbol: 'GOOGL',
-        type: 'percent',
-        condition: 'below',
-        value: -5,
-        isActive: false,
-        createdAt: '2024-01-14',
-      },
-    ]);
+    const loadAlerts = async () => {
+      try {
+        const { ApiService } = await import('../../services/ApiService');
+        const resp: any = await ApiService.get('/alerts');
+        const body = resp.data;
+        if (body?.success) {
+          const items = (body.data?.alerts || []).map((a: any) => ({
+            id: a.id,
+            symbol: a.stock_symbol || a.symbol,
+            type: (a.alert_type as AlertType) || 'price',
+            condition: (a.alert_type?.includes('above') ? 'above' : 'below') as AlertCondition,
+            value: Number(a.target_price ?? a.threshold ?? 0) || 0,
+            isActive: !!a.is_active,
+            createdAt: a.created_at || ''
+          }));
+          setAlerts(items);
+        }
+      } catch (e) {
+        console.error('Failed to load alerts', e);
+      }
+    };
+    loadAlerts();
   }, []);
 
-  const toggleAlert = (alertId: string) => {
-    setAlerts(prev =>
-      prev.map(alert =>
-        alert.id === alertId
-          ? {...alert, isActive: !alert.isActive}
-          : alert
-      )
-    );
+  const toggleAlert = async (alertId: string) => {
+    try {
+      const { ApiService } = await import('../../services/ApiService');
+      await ApiService.patch(`/alerts/${alertId}/toggle`);
+      setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isActive: !a.isActive } : a));
+    } catch (e) {
+      console.error('Failed to toggle alert', e);
+    }
   };
 
-  const deleteAlert = (alertId: string) => {
-    setAlerts(prev => prev.filter(alert => alert.id !== alertId));
+  const deleteAlert = async (alertId: string) => {
+    try {
+      const { ApiService } = await import('../../services/ApiService');
+      await ApiService.delete(`/alerts/${alertId}`);
+      setAlerts(prev => prev.filter(alert => alert.id !== alertId));
+    } catch (e) {
+      console.error('Failed to delete alert', e);
+    }
   };
 
   const formatAlertDescription = (alert: Alert) => {
@@ -115,10 +128,7 @@ export const AlertsScreen: React.FC = () => {
       <FAB
         icon="plus"
         style={[styles.fab, {backgroundColor: theme.colors.primary}]}
-        onPress={() => {
-          // TODO: Navigate to create alert screen
-          console.log('Create new alert');
-        }}
+        onPress={() => navigation.navigate('CreateAlert')}
       />
     </SafeAreaView>
   );

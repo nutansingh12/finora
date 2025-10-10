@@ -302,51 +302,84 @@ export class PortfolioController {
     }
   }
 
-  // Import stocks (placeholder)
+  // Import stocks from CSV (multipart upload via multer)
   async importStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        res.status(400).json({ success: false, message: 'CSV file is required' });
+        return;
+      }
+
+      const fs = await import('fs');
+      const csvBuffer = fs.readFileSync(file.path);
+
+      const { ImportExportService } = await import('@/services/ImportExportService');
+      const result = await ImportExportService.importStocksFromCSV(userId, csvBuffer, {
+        createGroups: true,
+        validateSymbols: true,
+        skipDuplicates: true,
+      });
+
       res.json({
         success: true,
-        message: 'Import functionality not yet implemented'
+        message: 'Import completed',
+        data: result,
       });
     } catch (error) {
       console.error('Import stocks error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
 
-  // Export stocks (placeholder)
+  // Export user's portfolio to CSV
   async exportStocks(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      res.json({
-        success: true,
-        message: 'Export functionality not yet implemented'
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const includeAnalysis = String(req.query.includeAnalysis || 'false') === 'true';
+      const includeCurrentPrices = String(req.query.includeCurrentPrices || 'true') === 'true';
+      const groupId = (req.query.groupId as string) || undefined;
+
+      const { ImportExportService } = await import('@/services/ImportExportService');
+      const csv = await ImportExportService.exportPortfolioToCSV(userId, {
+        includeAnalysis,
+        includeCurrentPrices,
+        groupId,
       });
+
+      const fileName = `finora_portfolio_${new Date().toISOString().slice(0,10)}.csv`;
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.status(200).send(csv);
     } catch (error) {
       console.error('Export stocks error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
 
-  // Get import template (placeholder)
+  // Get CSV import template
   async getImportTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      res.json({
-        success: true,
-        message: 'Import template functionality not yet implemented'
-      });
+      const { ImportExportService } = await import('@/services/ImportExportService');
+      const csv = await ImportExportService.exportTemplate();
+      const fileName = 'finora_import_template.csv';
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.status(200).send(csv);
     } catch (error) {
       console.error('Get import template error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
 

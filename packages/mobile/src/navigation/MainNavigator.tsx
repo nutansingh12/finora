@@ -13,6 +13,7 @@ import {ChangePasswordScreen} from '../screens/profile/ChangePasswordScreen';
 import {StockDetailsScreen} from '../screens/stock/StockDetailsScreen';
 import {AddStockScreen} from '../screens/stock/AddStockScreen';
 import {EditStockScreen} from '../screens/stock/EditStockScreen';
+import { CreateAlertScreen } from '../screens/alerts/CreateAlertScreen';
 
 export type MainTabParamList = {
   Portfolio: undefined;
@@ -26,6 +27,7 @@ export type MainStackParamList = {
   StockDetails: {symbol: string; stockId?: string};
   AddStock: {symbol?: string};
   EditStock: {stockId: string};
+  CreateAlert: undefined;
   ChangePassword: undefined;
 };
 
@@ -99,6 +101,11 @@ export const MainNavigator: React.FC = () => {
         name="ChangePassword"
         component={ChangePasswordScreen}
         options={{title: 'Change Password'}}
+      />
+      <Stack.Screen
+        name="CreateAlert"
+        component={CreateAlertScreen}
+        options={{title: 'Create Alert'}}
       />
     </Stack.Navigator>
   );
