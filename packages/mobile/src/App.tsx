@@ -1539,53 +1539,59 @@ const App: React.FC = () => {
       return Number.isFinite(value) ? value : 0;
     };
 
-    const sortedStocks = [...currentStocks].sort((a, b) => {
-      let result = 0;
+    let sortedStocks = [...currentStocks];
+    try {
+      sortedStocks = [...currentStocks].sort((a, b) => {
+        let result = 0;
 
-      switch (sortBy) {
-        case '🎯 Opportunity Hunter': // 52W Low Distance %
-          const distA = calculateDistance(a.price, a.week52Low || a.low52Week);
-          const distB = calculateDistance(b.price, b.week52Low || b.low52Week);
-          result = distA - distB;
-          break;
+        switch (sortBy) {
+          case '🎯 Opportunity Hunter': // 52W Low Distance %
+            const distA = calculateDistance(a.price, a.week52Low || a.low52Week);
+            const distB = calculateDistance(b.price, b.week52Low || b.low52Week);
+            result = distA - distB;
+            break;
 
-        case '💰 Value Seeker': // Cutoff Distance %
-          const cutoffDistA = calculateCutoffDistance(a.price, a.cutoffPrice);
-          const cutoffDistB = calculateCutoffDistance(b.price, b.cutoffPrice);
-          result = cutoffDistA - cutoffDistB;
-          break;
+          case '💰 Value Seeker': // Cutoff Distance %
+            const cutoffDistA = calculateCutoffDistance(a.price, a.cutoffPrice);
+            const cutoffDistB = calculateCutoffDistance(b.price, b.cutoffPrice);
+            result = cutoffDistA - cutoffDistB;
+            break;
 
-        case '💎 Blue Chip Elite': // Market Cap Stability
-          const mcapA = getMarketCapValue(a.marketCap);
-          const mcapB = getMarketCapValue(b.marketCap);
-          result = mcapB - mcapA; // Larger market cap first for stability
-          break;
+          case '💎 Blue Chip Elite': // Market Cap Stability
+            const mcapA = getMarketCapValue(a.marketCap);
+            const mcapB = getMarketCapValue(b.marketCap);
+            result = mcapB - mcapA; // Larger market cap first for stability
+            break;
 
-        case '📝 Alphabetical': // Symbol A-Z
-          result = a.symbol.localeCompare(b.symbol);
-          break;
+          case '📝 Alphabetical': // Symbol A-Z
+            result = a.symbol.localeCompare(b.symbol);
+            break;
 
-        case '⏰ Fresh Additions': // Recently Added (simulate with reverse order)
-          const indexA = watchlist.indexOf(a);
-          const indexB = watchlist.indexOf(b);
-          result = indexB - indexA; // Most recently added first
-          break;
+          case '⏰ Fresh Additions': // Recently Added (simulate with reverse order)
+            const indexA = watchlist.indexOf(a);
+            const indexB = watchlist.indexOf(b);
+            result = indexB - indexA; // Most recently added first
+            break;
 
-        case '📈 Price Action': // Current Price
-          result = a.price - b.price;
-          break;
+          case '📈 Price Action': // Current Price
+            result = a.price - b.price;
+            break;
 
-        case '🔥 Hot Movers': // Daily Change %
-          result = a.changePercent - b.changePercent;
-          break;
+          case '🔥 Hot Movers': // Daily Change %
+            result = a.changePercent - b.changePercent;
+            break;
 
-        default:
-          result = 0;
-      }
+          default:
+            result = 0;
+        }
 
-      // Apply ascending/descending order
-      return sortOrder === 'asc' ? result : -result;
-    });
+        // Apply ascending/descending order
+        return sortOrder === 'asc' ? result : -result;
+      });
+    } catch (err) {
+      console.error('Sort error, falling back to unsorted:', err);
+      sortedStocks = [...currentStocks];
+    }
 
     return (
       <View style={styles.dashboardContainer}>
