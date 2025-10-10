@@ -312,12 +312,26 @@ const App: React.FC = () => {
     saveCustomGroupsToStorage();
   }, [customGroups]);
 
+
+  // Ensure loaded/sourced stocks have all required fields to render safely
+  const sanitizeStock = (s: any) => ({
+    ...s,
+    alerts: Array.isArray(s?.alerts) ? s.alerts : [],
+    price: Number.isFinite(s?.price) ? s.price : 0,
+    change: Number.isFinite(s?.change) ? s.change : 0,
+    changePercent: Number.isFinite(s?.changePercent) ? s.changePercent : 0,
+    target: Number.isFinite(s?.target) ? s.target : (Number.isFinite(s?.cutoffPrice) ? s.cutoffPrice : 0),
+    week52Low: Number.isFinite(s?.week52Low) ? s.week52Low : (Number.isFinite(s?.low52Week) ? s.low52Week : 0),
+    week24Low: Number.isFinite(s?.week24Low) ? s.week24Low : (Number.isFinite(s?.low24Week) ? s.low24Week : 0),
+    week12Low: Number.isFinite(s?.week12Low) ? s.week12Low : (Number.isFinite(s?.low12Week) ? s.low12Week : 0),
+  });
+
   const loadWatchlistFromStorage = async () => {
     try {
       const savedWatchlist = await SafeStorage.getItem('finora_watchlist');
       if (savedWatchlist) {
         const parsedWatchlist = JSON.parse(savedWatchlist);
-        setWatchlist(parsedWatchlist);
+        setWatchlist(Array.isArray(parsedWatchlist) ? parsedWatchlist.map(sanitizeStock) : []);
       }
     } catch (error) {
       console.error('Error loading watchlist:', error);
@@ -1497,6 +1511,8 @@ const App: React.FC = () => {
       return ((c - l) / l) * 100;
     };
 
+
+
     const calculateCutoffDistance = (current: number, cutoff: number) => {
       return ((current - cutoff) / cutoff * 100);
     };
@@ -1711,9 +1727,9 @@ const App: React.FC = () => {
                     </Text>
                   </View>
                 </View>
-                {stock.alerts.length > 0 && (
+                {Array.isArray(stock.alerts) && stock.alerts.length > 0 && (
                   <View style={styles.alertBadges}>
-                    {stock.alerts.map((alert, i) => (
+                    {stock.alerts.map((alert: string, i: number) => (
                       <View key={i} style={styles.alertBadge}>
                         <Text style={styles.alertText}>{alert}</Text>
                       </View>
