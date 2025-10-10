@@ -79,6 +79,14 @@ const PortfolioPage: NextPage = () => {
     setTabValue(newValue);
   };
 
+  // System Alerts view: currentPrice <= cutoffPrice/targetPrice
+  const alertsStocks = stocks.filter((s) => {
+    const price = Number((s as any).currentPrice ?? 0);
+    const cutoff = Number(((s as any).cutoffPrice ?? s.targetPrice ?? 0));
+    return Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff;
+  });
+
+
   // Don't render if not authenticated
   if (!isAuthenticated) {
     return null;
@@ -173,6 +181,7 @@ const PortfolioPage: NextPage = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                   <Tabs value={tabValue} onChange={handleTabChange} aria-label="portfolio tabs">
                     <Tab label="All Stocks" />
+                    <Tab label="🚨 Alerts" />
                     <Tab label="By Groups" />
                     <Tab label="Performance" />
                   </Tabs>
@@ -187,12 +196,20 @@ const PortfolioPage: NextPage = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
+                  <StockList
+                    stocks={alertsStocks}
+                    isLoading={portfolioLoading}
+                    onStockClick={(stock) => router.push(`/portfolio/stock/${stock.symbol}`)}
+                  />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={2}>
                   <Typography variant="body1">
                     Groups view will be implemented here
                   </Typography>
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={2}>
+                <TabPanel value={tabValue} index={3}>
                   <Typography variant="body1">
                     Detailed performance metrics will be displayed here
                   </Typography>
