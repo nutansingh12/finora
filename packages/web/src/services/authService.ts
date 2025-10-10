@@ -1,46 +1,63 @@
 import apiService from './api';
-import { User, LoginForm, RegisterForm, ApiResponse } from '@/types';
+import { User, LoginForm, RegisterForm } from '@/types';
 
+// Normalized response the web uses internally
 export interface AuthResponse {
   user: User;
-  token: string;
+  token: string; // access token
   refreshToken: string;
 }
 
 class AuthService {
+  // Helper to normalize various backend shapes to { token, refreshToken, user }
+  private normalizeAuthData(payload: any): AuthResponse {
+    const user: User | undefined = payload?.user;
+    const tokens = payload?.tokens || payload; // refresh endpoint returns tokens directly
+    const token = tokens?.accessToken || payload?.token;
+    const refreshToken = tokens?.refreshToken || payload?.refreshToken;
+
+    if (!token || !refreshToken) {
+      throw new Error('Invalid auth payload from server');
+    }
+
+    return { user: user as User, token, refreshToken } as AuthResponse;
+  }
+
   async login(credentials: LoginForm): Promise<AuthResponse> {
-    const response = await apiService.post<AuthResponse>('/auth/login', credentials);
-    
+    const response = await apiService.post<any>('/auth/login', credentials);
+
     if (response.success && response.data) {
+      const normalized = this.normalizeAuthData(response.data);
       // Store token in API service
-      apiService.setAuthToken(response.data.token);
-      
+      apiService.setAuthToken(normalized.token);
+
       // Store refresh token separately
       if (typeof window !== 'undefined') {
-        localStorage.setItem('finora_refresh_token', response.data.refreshToken);
+        localStorage.setItem('finora_refresh_token', normalized.refreshToken);
       }
-      
-      return response.data;
+
+      return normalized;
     }
-    
+
     throw new Error(response.message || 'Login failed');
   }
 
   async register(userData: RegisterForm): Promise<AuthResponse> {
-    const response = await apiService.post<AuthResponse>('/auth/register', userData);
-    
+    const response = await apiService.post<any>('/auth/register', userData);
+
     if (response.success && response.data) {
+      const normalized = this.normalizeAuthData(response.data);
       // Store token in API service
-      apiService.setAuthToken(response.data.token);
-      
+      apiService.setAuthToken(normalized.token);
+
       // Store refresh token separately
       if (typeof window !== 'undefined') {
-        localStorage.setItem('finora_refresh_token', response.data.refreshToken);
+        localStorage.setItem('finora_refresh_token', normalized.refreshToken);
       }
-      
-      return response.data;
+
+      return normalized;
     }
-    
+
     throw new Error(response.message || 'Registration failed');
   }
 
@@ -60,49 +77,50 @@ class AuthService {
   }
 
   async refreshToken(): Promise<AuthResponse> {
-    const refreshToken = typeof window !== 'undefined' 
-      ? localStorage.getItem('finora_refresh_token') 
+    const refreshToken = typeof window !== 'undefined'
+      ? localStorage.getItem('finora_refresh_token')
       : null;
-    
+
     if (!refreshToken) {
       throw new Error('No refresh token available');
     }
 
-    const response = await apiService.post<AuthResponse>('/auth/refresh', {
+    const response = await apiService.post<any>('/auth/refresh', {
       refreshToken,
     });
-    
+
     if (response.success && response.data) {
+      const normalized = this.normalizeAuthData(response.data);
       // Update stored tokens
-      apiService.setAuthToken(response.data.token);
-      
+      apiService.setAuthToken(normalized.token);
+
       if (typeof window !== 'undefined') {
-        localStorage.setItem('finora_refresh_token', response.data.refreshToken);
+        localStorage.setItem('finora_refresh_token', normalized.refreshToken);
       }
-      
-      return response.data;
+
+      return normalized;
     }
-    
+
     throw new Error(response.message || 'Token refresh failed');
   }
 
   async getCurrentUser(): Promise<User> {
     const response = await apiService.get<User>('/auth/me');
-    
+
     if (response.success && response.data) {
       return response.data;
     }
-    
+
     throw new Error(response.message || 'Failed to get current user');
   }
 
   async updateProfile(userData: Partial<User>): Promise<User> {
     const response = await apiService.patch<User>('/auth/profile', userData);
-    
+
     if (response.success && response.data) {
       return response.data;
     }
-    
+
     throw new Error(response.message || 'Failed to update profile');
   }
 
@@ -111,7 +129,7 @@ class AuthService {
       currentPassword,
       newPassword,
     });
-    
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to change password');
     }
@@ -119,7 +137,7 @@ class AuthService {
 
   async forgotPassword(email: string): Promise<void> {
     const response = await apiService.post('/auth/forgot-password', { email });
-    
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to send reset email');
     }
@@ -130,7 +148,7 @@ class AuthService {
       token,
       newPassword,
     });
-    
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to reset password');
     }
@@ -138,7 +156,7 @@ class AuthService {
 
   async verifyEmail(token: string): Promise<void> {
     const response = await apiService.post('/auth/verify-email', { token });
-    
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to verify email');
     }
@@ -146,7 +164,7 @@ class AuthService {
 
   async resendVerificationEmail(): Promise<void> {
     const response = await apiService.post('/auth/resend-verification');
-    
+
     if (!response.success) {
       throw new Error(response.message || 'Failed to resend verification email');
     }
