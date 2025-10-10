@@ -739,18 +739,18 @@ const App: React.FC = () => {
       });
       const json = await resp.json();
       if (resp.ok && json.success) {
-        const stocks = (json.data?.stocks || []).map((s: any) => ({
+        const stocks = (json.data?.stocks || []).map((s: any) => sanitizeStock({
           symbol: s.symbol,
           name: s.name || s.symbol,
           exchange: s.exchange || 'Unknown',
           sector: s.sector || 'Unknown',
-          price: s.current_price ?? 0,
-          change: s.price_change ?? 0,
-          changePercent: s.price_change_percent ?? 0,
-          cutoffPrice: s.cutoff_price ?? 0,
-          target: s.target_price ?? s.cutoff_price ?? 0,
+          price: Number(s.current_price ?? 0),
+          change: Number(s.price_change ?? 0),
+          changePercent: Number(s.price_change_percent ?? 0),
+          cutoffPrice: Number(s.cutoff_price ?? 0),
+          target: Number(s.target_price ?? s.cutoff_price ?? 0),
           group: s.group_name || 'Watchlist',
-          alerts: [],
+          alerts: Array.isArray(s.alerts) ? s.alerts : [],
           lastUpdated: new Date().toISOString(),
         }));
         if (stocks.length > 0) {
