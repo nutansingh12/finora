@@ -144,6 +144,8 @@ const App: React.FC = () => {
   React.useEffect(() => {
     if (isAuthenticated) {
       loadUserGroups();
+      // Now that we have auth, load server stocks
+      loadUserStocksFromBackend();
     }
   }, [isAuthenticated]);
 
@@ -300,15 +302,15 @@ const App: React.FC = () => {
     console.log('Finora app started successfully!');
     loadWatchlistFromStorage();
     loadCustomGroupsFromStorage();
-    // Ensure auth token is set before first server fetch
+    // Set token if present, but defer server fetch until authenticated
     (async () => {
       try {
         const token = await SafeStorage.getItem('finora_auth_token');
         if (token) {
           ApiService.setAuthToken(token);
+          setIsAuthenticated(true);
         }
       } catch {}
-      await loadUserStocksFromBackend();
     })();
   }, []);
 
