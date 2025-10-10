@@ -8,13 +8,22 @@ class ApiService {
   constructor() {
     // Compute robust API base URL with safe fallbacks
     let base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').trim();
-    // If old host is configured in env, override to the active backend deployment
-    if (/^https?:\/\/finora-backend\.vercel\.app\/?$/i.test(base)) {
-      base = 'https://finora-backend-qwg4.vercel.app/api';
-    }
-    // Ensure trailing /api path exists
-    if (!/\/api(\/|$)/i.test(base)) {
-      base = base.replace(/\/$/, '') + '/api';
+    try {
+      const u = new URL(base);
+      const host = u.hostname.toLowerCase();
+      // If env points to the old backend host, force the active deployment
+      if (host === 'finora-backend.vercel.app') {
+        base = 'https://finora-backend-qwg4.vercel.app/api';
+      } else {
+        // Ensure trailing /api path exists regardless of path in env
+        if (!/\/api(\/|$)/i.test(u.pathname)) {
+          u.pathname = (u.pathname.replace(/\/$/, '')) + '/api';
+          base = u.toString();
+        }
+      }
+    } catch {
+      // Fallback if URL parsing fails
+      if (!/\/api(\/|$)/i.test(base)) base = base.replace(/\/$/, '') + '/api';
     }
     this.baseURL = base;
 
