@@ -13,6 +13,7 @@ import {
   Tabs,
   Tab,
   Fab,
+  Chip,
 } from '@mui/material';
 import { Add, FileDownload, BarChart } from '@mui/icons-material';
 
@@ -85,6 +86,17 @@ const PortfolioPage: NextPage = () => {
     const cutoff = Number(((s as any).cutoffPrice ?? s.targetPrice ?? 0));
     return Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff;
   });
+
+  // By Groups view state and helpers
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name] as const));
+  const groupCounts: Record<string, number> = stocks.reduce((acc: Record<string, number>, s: any) => {
+    const gid = (s as any).groupId || '';
+    acc[gid] = (acc[gid] || 0) + 1;
+    return acc;
+  }, {});
+  const groupedStocks = activeGroupId ? stocks.filter((s) => (s as any).groupId === activeGroupId) : stocks;
+
 
 
   // Don't render if not authenticated
@@ -204,9 +216,30 @@ const PortfolioPage: NextPage = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
-                  <Typography variant="body1">
-                    Groups view will be implemented here
-                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                    <Chip
+                      label={`All (${stocks.length})`}
+                      color={!activeGroupId ? 'primary' : 'default'}
+                      size="small"
+                      variant={!activeGroupId ? 'filled' : 'outlined'}
+                      onClick={() => setActiveGroupId(null)}
+                    />
+                    {groups.map((g) => (
+                      <Chip
+                        key={g.id}
+                        label={`${g.name} (${groupCounts[g.id] || 0})`}
+                        color={activeGroupId === g.id ? 'primary' : 'default'}
+                        size="small"
+                        variant={activeGroupId === g.id ? 'filled' : 'outlined'}
+                        onClick={() => setActiveGroupId(g.id)}
+                      />
+                    ))}
+                  </Box>
+                  <StockList
+                    stocks={groupedStocks}
+                    isLoading={portfolioLoading}
+                    onStockClick={(stock) => router.push(`/portfolio/stock/${stock.symbol}`)}
+                  />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>

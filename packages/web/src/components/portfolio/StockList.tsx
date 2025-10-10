@@ -156,9 +156,9 @@ const StockList = ({ stocks, isLoading, compact = false, onStockClick }: StockLi
               <TableCell>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar
-                    sx={{ 
-                      width: 32, 
-                      height: 32, 
+                    sx={{
+                      width: 32,
+                      height: 32,
                       mr: 2,
                       bgcolor: 'primary.main',
                       fontSize: '0.875rem',
@@ -167,8 +167,22 @@ const StockList = ({ stocks, isLoading, compact = false, onStockClick }: StockLi
                     {stock.symbol.charAt(0)}
                   </Avatar>
                   <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'medium', display: 'flex', alignItems: 'center', gap: 1 }}>
                       {stock.symbol}
+                      {/* Show alert badge when currentPrice <= cutoff/target */}
+                      {(() => {
+                        const price = Number((stock as any).currentPrice ?? 0);
+                        const cutoff = Number(((stock as any).cutoffPrice ?? (stock as any).targetPrice ?? 0));
+                        return Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff;
+                      })() && (
+                        <Chip
+                          label="🚨 Alert"
+                          color="error"
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.675rem' }}
+                        />
+                      )}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {stock.stock?.name || 'Unknown Company'}
