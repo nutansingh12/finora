@@ -300,8 +300,16 @@ const App: React.FC = () => {
     console.log('Finora app started successfully!');
     loadWatchlistFromStorage();
     loadCustomGroupsFromStorage();
-    // Attempt to load server watchlist with real prices on app start
-    loadUserStocksFromBackend();
+    // Ensure auth token is set before first server fetch
+    (async () => {
+      try {
+        const token = await SafeStorage.getItem('finora_auth_token');
+        if (token) {
+          ApiService.setAuthToken(token);
+        }
+      } catch {}
+      await loadUserStocksFromBackend();
+    })();
   }, []);
 
   useEffect(() => {
