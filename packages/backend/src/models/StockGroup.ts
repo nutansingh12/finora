@@ -42,7 +42,7 @@ export class StockGroup extends BaseModel {
     });
   }
 
-  // Get user's stock groups
+  // Get user's stock groups (tolerant to legacy schemas without is_active)
   static async getUserGroups(
     userId: string,
     options: {
@@ -50,11 +50,17 @@ export class StockGroup extends BaseModel {
       includeStockCount?: boolean;
     } = {}
   ): Promise<Array<StockGroupModel & { stockCount?: number }>> {
+    // Detect presence of is_active columns at runtime to avoid 500s on legacy DBs
+    const [hasGroupIsActive, hasUserStocksIsActive] = await Promise.all([
+      this.db.schema.hasColumn('stock_groups', 'is_active').catch(() => false),
+      this.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false),
+    ]);
+
     let query = this.db(this.tableName)
       .select('stock_groups.*')
       .where('user_id', userId);
 
-    if (!options.includeInactive) {
+    if (!options.includeInactive && hasGroupIsActive) {
       query = query.where('is_active', true);
     }
 
@@ -64,9 +70,11 @@ export class StockGroup extends BaseModel {
           'stock_groups.*',
           this.db.raw('COUNT(user_stocks.id) as stockCount')
         )
-        .leftJoin('user_stocks', function() {
-          this.on('user_stocks.group_id', '=', 'stock_groups.id');
-              this.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
+        .leftJoin('user_stocks', (join: any) => {
+          join.on('user_stocks.group_id', '=', 'stock_groups.id');
+          if (hasUserStocksIsActive) {
+            join.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
+          }
         })
         .groupBy('stock_groups.id');
     }
@@ -147,14 +155,21 @@ export class StockGroup extends BaseModel {
     groupId: string,
     userId: string
   ): Promise<(StockGroupModel & { stockCount: number }) | null> {
+    // Detect presence of is_active on user_stocks to avoid errors on legacy DBs
+    const hasUserStocksIsActive = await this.db.schema
+      .hasColumn('user_stocks', 'is_active')
+      .catch(() => false);
+
     const result = await this.db(this.tableName)
       .select(
         'stock_groups.*',
         this.db.raw('COUNT(user_stocks.id) as stockCount')
       )
-      .leftJoin('user_stocks', function() {
-        this.on('user_stocks.group_id', '=', 'stock_groups.id');
-            this.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
+      .leftJoin('user_stocks', (join: any) => {
+        join.on('user_stocks.group_id', '=', 'stock_groups.id');
+        if (hasUserStocksIsActive) {
+          join.on('user_stocks.is_active', '=', BaseModel.db.raw('true'));
+        }
       })
       .where('stock_groups.id', groupId)
       .where('stock_groups.user_id', userId)

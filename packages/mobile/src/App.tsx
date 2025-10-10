@@ -144,6 +144,8 @@ const App: React.FC = () => {
   React.useEffect(() => {
     if (isAuthenticated) {
       loadUserGroups();
+      // Now that we have auth, load server stocks
+      loadUserStocksFromBackend();
     }
   }, [isAuthenticated]);
 
@@ -300,8 +302,16 @@ const App: React.FC = () => {
     console.log('Finora app started successfully!');
     loadWatchlistFromStorage();
     loadCustomGroupsFromStorage();
-    // Attempt to load server watchlist with real prices on app start
-    loadUserStocksFromBackend();
+    // Set token if present, but defer server fetch until authenticated
+    (async () => {
+      try {
+        const token = await SafeStorage.getItem('finora_auth_token');
+        if (token) {
+          ApiService.setAuthToken(token);
+          setIsAuthenticated(true);
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -312,12 +322,26 @@ const App: React.FC = () => {
     saveCustomGroupsToStorage();
   }, [customGroups]);
 
+
+  // Ensure loaded/sourced stocks have all required fields to render safely
+  const sanitizeStock = (s: any) => ({
+    ...s,
+    alerts: Array.isArray(s?.alerts) ? s.alerts : [],
+    price: Number.isFinite(s?.price) ? s.price : 0,
+    change: Number.isFinite(s?.change) ? s.change : 0,
+    changePercent: Number.isFinite(s?.changePercent) ? s.changePercent : 0,
+    target: Number.isFinite(s?.target) ? s.target : (Number.isFinite(s?.cutoffPrice) ? s.cutoffPrice : 0),
+    week52Low: Number.isFinite(s?.week52Low) ? s.week52Low : (Number.isFinite(s?.low52Week) ? s.low52Week : 0),
+    week24Low: Number.isFinite(s?.week24Low) ? s.week24Low : (Number.isFinite(s?.low24Week) ? s.low24Week : 0),
+    week12Low: Number.isFinite(s?.week12Low) ? s.week12Low : (Number.isFinite(s?.low12Week) ? s.low12Week : 0),
+  });
+
   const loadWatchlistFromStorage = async () => {
     try {
       const savedWatchlist = await SafeStorage.getItem('finora_watchlist');
       if (savedWatchlist) {
         const parsedWatchlist = JSON.parse(savedWatchlist);
-        setWatchlist(parsedWatchlist);
+        setWatchlist(Array.isArray(parsedWatchlist) ? parsedWatchlist.map(sanitizeStock) : []);
       }
     } catch (error) {
       console.error('Error loading watchlist:', error);
@@ -715,18 +739,18 @@ const App: React.FC = () => {
       });
       const json = await resp.json();
       if (resp.ok && json.success) {
-        const stocks = (json.data?.stocks || []).map((s: any) => ({
+        const stocks = (json.data?.stocks || []).map((s: any) => sanitizeStock({
           symbol: s.symbol,
           name: s.name || s.symbol,
           exchange: s.exchange || 'Unknown',
           sector: s.sector || 'Unknown',
-          price: s.current_price ?? 0,
-          change: s.price_change ?? 0,
-          changePercent: s.price_change_percent ?? 0,
-          cutoffPrice: s.cutoff_price ?? 0,
-          target: s.target_price ?? s.cutoff_price ?? 0,
+          price: Number(s.current_price ?? 0),
+          change: Number(s.price_change ?? 0),
+          changePercent: Number(s.price_change_percent ?? 0),
+          cutoffPrice: Number(s.cutoff_price ?? 0),
+          target: Number(s.target_price ?? s.cutoff_price ?? 0),
           group: s.group_name || 'Watchlist',
-          alerts: [],
+          alerts: Array.isArray(s.alerts) ? s.alerts : [],
           lastUpdated: new Date().toISOString(),
         }));
         if (stocks.length > 0) {
@@ -1497,65 +1521,77 @@ const App: React.FC = () => {
       return ((c - l) / l) * 100;
     };
 
+
+
     const calculateCutoffDistance = (current: number, cutoff: number) => {
-      return ((current - cutoff) / cutoff * 100);
+      const c = Number.isFinite(current) ? current : 0;
+      const co = Number.isFinite(cutoff) && cutoff > 0 ? cutoff : 0;
+      if (co <= 0) return 0;
+      return ((c - co) / co) * 100;
     };
 
-    const getMarketCapValue = (marketCap: string) => {
+    const getMarketCapValue = (marketCap?: string) => {
+      if (!marketCap || typeof marketCap !== 'string') return 0;
       const value = parseFloat(marketCap.replace(/[$BTM]/g, ''));
       if (marketCap.includes('T')) return value * 1000000;
       if (marketCap.includes('B')) return value * 1000;
       if (marketCap.includes('M')) return value;
-      return value;
+      return Number.isFinite(value) ? value : 0;
     };
 
-    const sortedStocks = [...currentStocks].sort((a, b) => {
-      let result = 0;
+    let sortedStocks = [...currentStocks];
+    try {
+      sortedStocks = [...currentStocks].sort((a, b) => {
+        let result = 0;
 
-      switch (sortBy) {
-        case '🎯 Opportunity Hunter': // 52W Low Distance %
-          const distA = calculateDistance(a.price, a.week52Low || a.low52Week);
-          const distB = calculateDistance(b.price, b.week52Low || b.low52Week);
-          result = distA - distB;
-          break;
+        switch (sortBy) {
+          case '🎯 Opportunity Hunter': // 52W Low Distance %
+            const distA = calculateDistance(a.price, a.week52Low || a.low52Week);
+            const distB = calculateDistance(b.price, b.week52Low || b.low52Week);
+            result = distA - distB;
+            break;
 
-        case '💰 Value Seeker': // Cutoff Distance %
-          const cutoffDistA = calculateCutoffDistance(a.price, a.cutoffPrice);
-          const cutoffDistB = calculateCutoffDistance(b.price, b.cutoffPrice);
-          result = cutoffDistA - cutoffDistB;
-          break;
+          case '💰 Value Seeker': // Cutoff Distance %
+            const cutoffDistA = calculateCutoffDistance(a.price, a.cutoffPrice);
+            const cutoffDistB = calculateCutoffDistance(b.price, b.cutoffPrice);
+            result = cutoffDistA - cutoffDistB;
+            break;
 
-        case '💎 Blue Chip Elite': // Market Cap Stability
-          const mcapA = getMarketCapValue(a.marketCap);
-          const mcapB = getMarketCapValue(b.marketCap);
-          result = mcapB - mcapA; // Larger market cap first for stability
-          break;
+          case '💎 Blue Chip Elite': // Market Cap Stability
+            const mcapA = getMarketCapValue(a.marketCap);
+            const mcapB = getMarketCapValue(b.marketCap);
+            result = mcapB - mcapA; // Larger market cap first for stability
+            break;
 
-        case '📝 Alphabetical': // Symbol A-Z
-          result = a.symbol.localeCompare(b.symbol);
-          break;
+          case '📝 Alphabetical': // Symbol A-Z
+            result = a.symbol.localeCompare(b.symbol);
+            break;
 
-        case '⏰ Fresh Additions': // Recently Added (simulate with reverse order)
-          const indexA = watchlist.indexOf(a);
-          const indexB = watchlist.indexOf(b);
-          result = indexB - indexA; // Most recently added first
-          break;
+          case '⏰ Fresh Additions': // Recently Added (simulate with reverse order)
+            const indexA = watchlist.indexOf(a);
+            const indexB = watchlist.indexOf(b);
+            result = indexB - indexA; // Most recently added first
+            break;
 
-        case '📈 Price Action': // Current Price
-          result = a.price - b.price;
-          break;
+          case '📈 Price Action': // Current Price
+            result = a.price - b.price;
+            break;
 
-        case '🔥 Hot Movers': // Daily Change %
-          result = a.changePercent - b.changePercent;
-          break;
+          case '🔥 Hot Movers': // Daily Change %
+            result = a.changePercent - b.changePercent;
+            break;
 
-        default:
-          result = 0;
-      }
+          default:
+            result = 0;
+        }
 
-      // Apply ascending/descending order
-      return sortOrder === 'asc' ? result : -result;
-    });
+        // Apply ascending/descending order
+        return sortOrder === 'asc' ? result : -result;
+      });
+    } catch (err) {
+      console.error('Sort error, falling back to unsorted:', err);
+      sortedStocks = [...currentStocks];
+    }
 
     return (
       <View style={styles.dashboardContainer}>
@@ -1711,9 +1747,9 @@ const App: React.FC = () => {
                     </Text>
                   </View>
                 </View>
-                {stock.alerts.length > 0 && (
+                {Array.isArray(stock.alerts) && stock.alerts.length > 0 && (
                   <View style={styles.alertBadges}>
-                    {stock.alerts.map((alert, i) => (
+                    {stock.alerts.map((alert: string, i: number) => (
                       <View key={i} style={styles.alertBadge}>
                         <Text style={styles.alertText}>{alert}</Text>
                       </View>
