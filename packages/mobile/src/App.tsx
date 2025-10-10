@@ -1606,15 +1606,6 @@ const App: React.FC = () => {
             <TouchableOpacity style={styles.userActionButton} onPress={() => Alert.alert('Feedback', 'Send feedback to: support@finora.com\n\nOr rate us on the app store!')}>
               <Text style={styles.userActionButtonText}>💬</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.userActionButton} onPress={() => {
-              // Refresh the app data
-              loadCustomGroupsFromStorage();
-              loadWatchlistFromStorage();
-              refreshStockData();
-              Alert.alert('Refreshed', 'Data refreshed successfully!');
-            }}>
-              <Text style={styles.userActionButtonText}>🔄</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.userActionButton} onPress={handleLogout}>
               <Text style={styles.userActionButtonText}>🚪</Text>
             </TouchableOpacity>
@@ -1785,7 +1776,7 @@ const App: React.FC = () => {
                 <View style={styles.footerInfo}>
                   <Text style={styles.footerText}>Volume: {stock.volume}</Text>
                   <Text style={styles.footerText}>Cap: {stock.marketCap}</Text>
-                  <Text style={styles.footerText}>Updated: {stock.lastUpdated}</Text>
+                  <Text style={styles.footerText} numberOfLines={1} ellipsizeMode='tail'>Notes: {(stock.notes || '').trim() || '-'}</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.editButton}
@@ -3609,7 +3600,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 10,
     marginRight: 8,
     borderWidth: 1,
     borderColor: '#00FF88',
