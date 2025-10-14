@@ -11,14 +11,30 @@ const router = Router();
 const portfolioController = new PortfolioController();
 
 // Configure multer for file uploads
+// Ensure upload directory exists (important on serverless where only /tmp is writable)
+const fs = require('fs');
+const path = require('path');
+const uploadDir = config.upload?.uploadPath || '/tmp/uploads';
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (e: any) {
+  const msg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : String(e);
+  console.warn('Could not ensure upload dir exists:', uploadDir, msg);
+}
 const upload = multer({
-  // On serverless (Vercel) only /tmp is writable. Allow override via config, default to /tmp/uploads
-  dest: config.upload?.uploadPath || '/tmp/uploads',
+  dest: uploadDir,
   limits: {
     fileSize: config.upload?.maxFileSize || 5 * 1024 * 1024 // 5MB default
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel') {
+    if (
+      file.mimetype === 'text/csv' ||
+      file.mimetype === 'application/vnd.ms-excel' ||
+      file.mimetype === 'application/octet-stream' || // some Android pickers
+      file.originalname?.toLowerCase().endsWith('.csv') // fallback by extension
+    ) {
       cb(null, true);
     } else {
       cb(new Error('Only CSV files are allowed'));
