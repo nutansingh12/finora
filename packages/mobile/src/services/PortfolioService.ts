@@ -25,7 +25,8 @@ class PortfolioServiceClass {
     ].filter(Boolean) as string[];
 
     const pickerTypes = Platform.select({
-      android: androidCsvTypes,
+      // Show all files on Android to avoid greying-out due to provider MIME quirks; we'll validate .csv after pick
+      android: [DocTypes.allFiles],
       ios: [DocTypes.csv ?? DocTypes.plainText, DocTypes.plainText, DocTypes.allFiles],
       default: [DocTypes.csv ?? DocTypes.plainText, DocTypes.plainText],
     }) as any;

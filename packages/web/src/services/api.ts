@@ -7,25 +7,46 @@ class ApiService {
 
   constructor() {
     // Compute robust API base URL with safe fallbacks
-    let base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').trim();
+    const PROD_API = 'https://finora-backend-qwg4.vercel.app/api';
+    let base = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+
+    // If no env provided, decide based on runtime and environment
+    if (!base) {
+      const isBrowser = typeof window !== 'undefined';
+      const host = isBrowser ? window.location.hostname : '';
+      if (isBrowser && (host === 'localhost' || host === '127.0.0.1')) {
+        base = 'http://localhost:3001/api';
+      } else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+        base = PROD_API;
+      } else {
+        base = 'http://localhost:3001/api';
+      }
+    }
+
     try {
       const u = new URL(base);
       const host = u.hostname.toLowerCase();
       // If env points to the old backend host, force the active deployment
       if (host === 'finora-backend.vercel.app') {
-        base = 'https://finora-backend-qwg4.vercel.app/api';
-      } else {
-        // Ensure trailing /api path exists regardless of path in env
-        if (!/\/api(\/|$)/i.test(u.pathname)) {
-          u.pathname = (u.pathname.replace(/\/$/, '')) + '/api';
-          base = u.toString();
-        }
+        base = PROD_API;
+      }
+      // Ensure trailing /api path exists regardless of path in env
+      if (!/\/api(\/|$)/i.test(u.pathname)) {
+        u.pathname = (u.pathname.replace(/\/$/, '')) + '/api';
+        base = u.toString();
       }
     } catch {
       // Fallback if URL parsing fails
       if (!/\/api(\/|$)/i.test(base)) base = base.replace(/\/$/, '') + '/api';
     }
+
     this.baseURL = base;
+
+    // Helpful in development to see which API base is being used
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.info('[ApiService] baseURL:', this.baseURL);
+    }
 
     this.client = axios.create({
       baseURL: this.baseURL,

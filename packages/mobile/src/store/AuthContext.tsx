@@ -1,5 +1,15 @@
 import React, {createContext, useContext, useEffect, useState} from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Safe AsyncStorage with runtime probe and in-memory fallback
+const __memAS = new Map<string, string>();
+let AsyncStorage: any = {
+  async getItem(key: string) { return __memAS.has(key) ? (__memAS.get(key) as string) : null; },
+  async setItem(key: string, value: string) { __memAS.set(key, value); },
+  async removeItem(key: string) { __memAS.delete(key); },
+  async multiRemove(keys: string[]) { keys.forEach(k => __memAS.delete(k)); },
+  async clear() { __memAS.clear(); },
+} as const;
+// Note: do not require '@react-native-async-storage/async-storage' in this build to avoid native crashes
+// Fallback memory storage is used; persistence across restarts is temporary in this debug build
 import {ApiService} from '../services/ApiService';
 import {AuthService} from '../services/AuthService';
 

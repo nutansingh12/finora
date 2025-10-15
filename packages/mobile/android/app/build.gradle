@@ -176,4 +176,17 @@ dependencies {
     implementation jscFlavor
 }
 
-// apply from: file("../../../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.fragment:fragment:1.6.2'
+        force 'androidx.fragment:fragment-ktx:1.6.2'
+        force 'androidx.activity:activity:1.7.2'
+        force 'androidx.activity:activity-ktx:1.7.2'
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-parcelize-runtime:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-android-extensions-runtime:1.8.22'
+    }
+}
+
+
+apply from: file("../../../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)

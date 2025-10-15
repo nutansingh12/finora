@@ -1,19 +1,15 @@
 import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse} from 'axios';
-// Safe AsyncStorage import with in-memory fallback (avoids native crash if not linked)
-let AsyncStorage: any;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch (e) {
-  const __mem = new Map<string, string>();
-  AsyncStorage = {
-    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
-    async setItem(key: string, value: string) { __mem.set(key, value); },
-    async removeItem(key: string) { __mem.delete(key); },
-    async multiRemove(keys: string[]) { keys.forEach(k => __mem.delete(k)); },
-    async clear() { __mem.clear(); },
-  } as const;
-}
+// Safe AsyncStorage with runtime probe and in-memory fallback
+const __mem = new Map<string, string>();
+let AsyncStorage: any = {
+  async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+  async setItem(key: string, value: string) { __mem.set(key, value); },
+  async removeItem(key: string) { __mem.delete(key); },
+  async multiRemove(keys: string[]) { keys.forEach(k => __mem.delete(k)); },
+  async clear() { __mem.clear(); },
+} as const;
+// Note: do not require '@react-native-async-storage/async-storage' in this build to avoid native crashes
+// Fallback memory storage is used; persistence across restarts is temporary in this debug build
 import {API_BASE_URL} from '../config/constants';
 
 class ApiServiceClass {

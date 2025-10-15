@@ -1,7 +1,11 @@
 // API Configuration
-export const API_BASE_URL = __DEV__
-  ? 'http://localhost:3001/api'
-  : 'https://finora-backend-qwg4.vercel.app/api';
+// Use production backend by default even in debug builds (avoids localhost on device)
+export const API_BASE_URL = 'https://finora-backend-qwg4.vercel.app/api';
+
+// Frontend base (for calling Next.js API routes when needed)
+export const FRONTEND_BASE_URL = __DEV__
+  ? 'http://localhost:3000'
+  : 'https://finora-web.vercel.app';
 
 // App Configuration
 export const APP_NAME = 'Finora';
@@ -48,6 +52,10 @@ export const API_ENDPOINTS = {
     CREATE_ALERT: '/alerts',
     UPDATE_ALERT: '/alerts',
     DELETE_ALERT: '/alerts',
+  },
+  PORTFOLIO: {
+    IMPORT: '/portfolio/import',
+    EXPORT: '/portfolio/export',
   },
 } as const;
 
