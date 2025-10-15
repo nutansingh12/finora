@@ -26,21 +26,59 @@ AsyncStorage = {
 
 const historicalDataService = {
   async fetchHistoricalData(symbol: string, period: string) {
-    return { data: [] };
+    try {
+      const token = ApiService.getAuthToken?.() || '';
+      const mapped = period === '1y' ? 'daily' : period;
+      const resp = await fetch(`${API_BASE_URL}/market/stock/${encodeURIComponent(symbol)}/historical?period=${mapped}&interval=1d`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const json = await resp.json();
+      const prices = Array.isArray(json?.data?.prices) ? json.data.prices : [];
+      return { data: prices };
+    } catch (e) {
+      console.warn('historicalDataService.fetchHistoricalData failed', e);
+      return { data: [] };
+    }
   },
   calculatePriceMetrics(data: any[], currentPrice: number) {
+    const series: number[] = (Array.isArray(data) ? data : [])
+      .map((d: any) => Number(d.close ?? d.price))
+      .filter((n: number) => Number.isFinite(n) && n > 0);
+
+    if (series.length === 0) {
+      return {
+        week52Low: currentPrice * 0.8,
+        week24Low: currentPrice * 0.85,
+        week12Low: currentPrice * 0.9,
+        week52High: currentPrice * 1.2,
+        week24High: currentPrice * 1.15,
+        week12High: currentPrice * 1.1,
+        week52LowDistance: 20,
+        week24LowDistance: 15,
+        week12LowDistance: 10,
+      };
+    }
+
+    const take = (n: number) => series.slice(-n);
+    const lastClose = Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : series[series.length - 1];
+    const minMax = (arr: number[]) => [Math.min(...arr), Math.max(...arr)];
+    const [l52, h52] = minMax(take(252));
+    const [l24, h24] = minMax(take(120));
+    const [l12, h12] = minMax(take(60));
+    const dist = (low: number) => ((lastClose - low) / low) * 100;
+
     return {
-      week52Low: currentPrice * 0.8,
-      week24Low: currentPrice * 0.85,
-      week12Low: currentPrice * 0.9,
-      week52High: currentPrice * 1.2,
-      week24High: currentPrice * 1.15,
-      week12High: currentPrice * 1.1,
-      week52LowDistance: 20,
-      week24LowDistance: 15,
-      week12LowDistance: 10
+      week52Low: l52,
+      week24Low: l24,
+      week12Low: l12,
+      week52High: h52,
+      week24High: h24,
+      week12High: h12,
+      week52LowDistance: dist(l52),
+      week24LowDistance: dist(l24),
+      week12LowDistance: dist(l12),
     };
-  }
+  },
 };
 
 // No local stock database - using internet search APIs
@@ -211,6 +249,8 @@ const App: React.FC = () => {
   // Function to update alerts based on cutoff price vs current price
   const updateStockAlerts = (stock: any) => {
     const alerts: string[] = [];
+
+
     const price = Number(stock.price);
     const cutoff = Number(stock.cutoffPrice ?? stock.target);
     if (Number.isFinite(price) && Number.isFinite(cutoff) && cutoff > 0 && price <= cutoff) {
@@ -256,6 +296,9 @@ const App: React.FC = () => {
     setSelectedChartStock(null);
   };
 
+  const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
+
+
   // Function to update stock with real historical data
   const updateStockWithHistoricalData = async (stock: any) => {
     try {
@@ -279,6 +322,8 @@ const App: React.FC = () => {
       return stock; // Return original stock if update fails
     }
   };
+
+
   const [watchlist, setWatchlist] = useState<Array<any & {
     cutoffPrice: number;
     shares?: number;
@@ -354,6 +399,70 @@ const App: React.FC = () => {
       console.error('Error saving watchlist:', error);
     }
   };
+
+
+  // Live quotes polling (batch)
+  const fetchLiveQuotes = async () => {
+    const symbols = Array.from(new Set(watchlist.map(s => String(s.symbol).toUpperCase())));
+    if (symbols.length === 0) return;
+    try {
+      const resp = await ApiService.post('/search/quotes', { symbols: symbols.slice(0, 50) });
+      const quotes = ((resp as any)?.data?.data?.quotes ?? []) as any[];
+      setWatchlist(prev => prev.map(s => {
+        const q = quotes.find(q => q.symbol === String(s.symbol).toUpperCase());
+        return q ? {
+          ...s,
+          price: Number.isFinite(q.price) ? q.price : s.price,
+          change: Number.isFinite(q.change) ? q.change : s.change,
+          changePercent: Number.isFinite(q.changePercent) ? q.changePercent : s.changePercent,
+          lastUpdated: q.lastUpdated || new Date().toISOString(),
+        } : s;
+      }));
+      setLastRefreshAt(new Date().toISOString());
+    } catch (e) {
+      console.warn('Live quotes refresh failed', e);
+    }
+  };
+
+  const manualRefresh = () => { fetchLiveQuotes(); };
+
+  useEffect(() => {
+    if (watchlist.length === 0) return;
+    fetchLiveQuotes();
+    const id = setInterval(fetchLiveQuotes, 15000);
+    return () => clearInterval(id);
+  }, [watchlist.length]);
+
+  // Compute 52-week metrics from historical data (staggered)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const symbols = Array.from(new Set(watchlist.map(s => String(s.symbol).toUpperCase()))).slice(0, 20);
+      for (const sym of symbols) {
+        if (cancelled) break;
+        try {
+          const hist = await historicalDataService.fetchHistoricalData(sym, '1y');
+          const arr = (hist?.data ?? []) as any[];
+          const last = arr.length ? Number(arr[arr.length - 1].close ?? arr[arr.length - 1].price) : 0;
+          const metrics = historicalDataService.calculatePriceMetrics(arr, last);
+          setWatchlist(prev => prev.map(s => s.symbol.toUpperCase() === sym ? {
+            ...s,
+            week52Low: metrics.week52Low,
+            week24Low: metrics.week24Low,
+            week12Low: metrics.week12Low,
+            week52High: metrics.week52High,
+            week24High: metrics.week24High,
+            week12High: metrics.week12High,
+          } : s));
+        } catch {}
+        await new Promise<void>((resolve) => setTimeout(resolve, 1200));
+      }
+    };
+    if (watchlist.length) run();
+    return () => { cancelled = true; };
+  }, [watchlist.length]);
+
+
 
   const syncToCloudDatabase = async (data: any[], attempt: number = 0): Promise<boolean> => {
     try {
@@ -1659,6 +1768,9 @@ const App: React.FC = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={manualRefresh}>
+              <Text style={styles.stackedActionButtonText}>🔄</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.stackedActionButton} onPress={handleExportCSVBackend}>
               <Text style={styles.stackedActionButtonText}>📤</Text>
             </TouchableOpacity>

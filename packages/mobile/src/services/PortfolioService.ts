@@ -1,7 +1,7 @@
 import {ApiService} from './ApiService';
 import {API_ENDPOINTS} from '../config/constants';
 import {Platform, PermissionsAndroid} from 'react-native';
-import DocumentPicker, {types as DocTypes} from 'react-native-document-picker';
+import DocumentPicker from 'react-native-document-picker';
 
 export interface ImportResult {
   totalRows: number;
@@ -14,27 +14,16 @@ class PortfolioServiceClass {
   async pickAndImportCSV(): Promise<ImportResult> {
     // 1) Pick a CSV file from local storage
     // On Android, include common CSV MIME types and text/* to avoid grayed-out files in some pickers
-    const androidCsvTypes = [
-      'text/csv',
-      'text/comma-separated-values',
-      'application/csv',
-      'application/vnd.ms-excel', // some providers label CSV like this
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // allow user to pick mistakenly saved xlsx (we will validate name)
-      DocTypes.plainText,
-      '*/*', // fallback to allow manual selection if provider mislabels
-    ].filter(Boolean) as string[];
 
     const pickerTypes = Platform.select({
-      // Show all files on Android to avoid greying-out due to provider MIME quirks; we'll validate .csv after pick
-      android: [DocTypes.allFiles],
-      ios: [DocTypes.csv ?? DocTypes.plainText, DocTypes.plainText, DocTypes.allFiles],
-      default: [DocTypes.csv ?? DocTypes.plainText, DocTypes.plainText],
+      android: ['*/*'],
+      ios: ['public.comma-separated-values-text', 'public.text', 'public.data'],
+      default: ['public.comma-separated-values-text', 'public.text'],
     }) as any;
 
     const file = await DocumentPicker.pickSingle({
       type: pickerTypes,
       copyTo: 'cachesDirectory',
-      presentationStyle: 'formSheet',
     });
 
     // Ensure we have a file path we can read (on Android content:// -> copied path)

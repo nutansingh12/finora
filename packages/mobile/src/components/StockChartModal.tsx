@@ -11,7 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { API_BASE_URL } from '../config/constants';
-import ApiService from '../services/ApiService';
+import { ApiService } from '../services/ApiService';
 // Temporarily remove SVG to prevent crashes
 // import Svg, { Path, Line, Text as SvgText, Circle, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -386,8 +386,8 @@ export const StockChartModal: React.FC<StockChartModalProps> = ({
         {/* Chart info */}
         <View style={styles.chartInfo}>
           <Text style={styles.infoText}>Data Points: {data.length}</Text>
-          <Text style={[styles.infoText, { color: lineColor }]}>
-            {stockData?.changePercent >= 0 ? '↗' : '↘'} {Math.abs(stockData?.changePercent || 0).toFixed(2)}%
+          <Text style={[styles.infoText, { color: lineColor }] }>
+            {Number(stockData?.changePercent ?? 0) >= 0 ? '↗' : '↘'} {Math.abs(Number(stockData?.changePercent ?? 0)).toFixed(2)}%
           </Text>
         </View>
 
