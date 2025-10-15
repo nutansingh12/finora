@@ -174,7 +174,7 @@ export class ImportExportService {
           cutoffPrice: (userStock as any)?.cutoff_price,
           groupName: (userStock as any)?.group_name,
           notes: (userStock as any)?.notes,
-          addedAt: ((userStock as any)?.added_at ? new Date((userStock as any).added_at) : new Date()).toISOString().split('T')[0]
+          addedAt: (((userStock as any)?.added_at ? new Date((userStock as any).added_at) : new Date()).toISOString().split('T')[0]) || ''
         };
 
         // Include current prices if requested

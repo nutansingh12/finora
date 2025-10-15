@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { body } from 'express-validator';
 import { authenticateToken } from '@/middleware/auth';
 import { validateRequest } from '@/middleware/validateRequest';
@@ -18,7 +18,7 @@ router.post(
       .withMessage('watchlist must be an array')
   ],
   validateRequest,
-  async (req, res) => {
+  async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user?.id;
       const items = (req.body?.watchlist ?? []) as any[];
