@@ -9,6 +9,7 @@ import { Stock } from '../models/Stock';
 import { UserStock } from '../models/UserStock';
 import { StockGroup } from '../models/StockGroup';
 import { AlphaVantageService } from './AlphaVantageService';
+import { YahooFinanceService } from './YahooFinanceService';
 
 export interface ImportResult {
   success: boolean;
@@ -56,6 +57,7 @@ export interface ImportRow {
 
 export class ImportExportService {
   private static alphaVantageService = new AlphaVantageService();
+  private static yahooFinanceService = new YahooFinanceService();
 
   // Import stocks from CSV
   static async importStocksFromCSV(
@@ -382,25 +384,42 @@ export class ImportExportService {
       return;
     }
 
-    // Validate symbol if requested
+    // Validate symbol if requested (Yahoo-first, then Alpha; do not block import if both fail)
     if (options.validateSymbols) {
-      const stockData = await this.alphaVantageService.getStockQuote(symbol, { userId });
-      if (!stockData) {
-        throw new Error(`Invalid or unknown stock symbol: ${symbol}`);
+      let valid = false;
+      try {
+        const yq = await this.yahooFinanceService.getStockQuote(symbol);
+        valid = !!yq;
+      } catch {}
+      if (!valid) {
+        try {
+          const aq = await this.alphaVantageService.getStockQuote(symbol, { userId });
+          valid = !!aq;
+        } catch {}
+      }
+      if (!valid) {
+        // Instead of throwing, log and proceed to create a minimal stock record to avoid blocking bulk import
+        result.errors.push({ row: rowNumber, symbol, error: `Symbol not verified, created as UNKNOWN: ${symbol}` });
       }
     }
 
     // Get or create stock
     let stock = await Stock.findBySymbol(symbol);
     if (!stock) {
-      // Fetch stock data from Alpha Vantage
-      const stockData = await this.alphaVantageService.getStockQuote(symbol, { userId });
-      if (!stockData) {
-        throw new Error(`Could not fetch data for symbol: ${symbol}`);
-      }
+      // Try Yahoo first for basic existence; fallback to Alpha; if both fail, create minimal record
+      let createdSymbol = symbol;
+      try {
+        const yq = await this.yahooFinanceService.getStockQuote(symbol);
+        if (yq?.symbol) {
+          createdSymbol = yq.symbol;
+        } else {
+          const aq = await this.alphaVantageService.getStockQuote(symbol, { userId });
+          if (aq?.symbol) createdSymbol = aq.symbol;
+        }
+      } catch {}
 
       stock = await Stock.createStock({
-        symbol: stockData.symbol,
+        symbol: createdSymbol,
         name: symbol,
         exchange: 'UNKNOWN',
         sector: undefined,

@@ -15,6 +15,8 @@ import { captureScreen } from 'react-native-view-shot';
 import DeviceInfo from 'react-native-device-info';
 import { Ionicons } from '@expo/vector-icons';
 import { styles } from './FeedbackModal.styles';
+import { API_BASE_URL } from '../../config/constants';
+import { ApiService } from '../../services/ApiService';
 
 interface FeedbackModalProps {
   visible: boolean;
@@ -104,12 +106,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
         platform: 'mobile'
       };
 
-      // TODO: Replace with your actual API endpoint
-      const response = await fetch('http://localhost:3001/api/feedback', {
+      const token = (ApiService.getAuthToken && ApiService.getAuthToken()) || '';
+      const response = await fetch(`${API_BASE_URL}/feedback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${/* TODO: Get token from storage */''}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify(feedbackData)
       });

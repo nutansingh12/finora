@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FeedbackModal } from './components/feedback/FeedbackModal';
 import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, FlatList} from 'react-native';
 import { StockChartModal } from './components/StockChartModal';
 import { StockService } from './services/StockService';
@@ -139,6 +140,8 @@ const App: React.FC = () => {
   const [chartData, setChartData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('All Stocks');
   const [sortBy, setSortBy] = useState('🎯 Opportunity Hunter');
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
+
   const [sortOrder, setSortOrder] = useState('asc');
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -1748,12 +1751,14 @@ const App: React.FC = () => {
             <Text style={styles.username}>👤 {email || 'User'}</Text>
           </View>
           <View style={styles.userActions}>
-            <TouchableOpacity style={styles.userActionButton} onPress={() => Alert.alert('Feedback', 'Send feedback to: support@finora.com\n\nOr rate us on the app store!')}>
+            <TouchableOpacity style={styles.userActionButton} onPress={() => setFeedbackVisible(true)}>
               <Text style={styles.userActionButtonText}>💬</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.userActionButton} onPress={handleLogout}>
               <Text style={styles.userActionButtonText}>🚪</Text>
             </TouchableOpacity>
+        <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
+
           </View>
         </View>
 

@@ -323,7 +323,7 @@ export class PortfolioController {
       const { ImportExportService } = await import('@/services/ImportExportService');
       const result = await ImportExportService.importStocksFromCSV(userId, csvBuffer, {
         createGroups: true,
-        validateSymbols: true,
+        validateSymbols: false,
         skipDuplicates: true,
       });
 
