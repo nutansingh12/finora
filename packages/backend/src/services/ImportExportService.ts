@@ -146,17 +146,35 @@ export class ImportExportService {
       const exportData: ExportData[] = [];
 
       for (const userStock of userStocks) {
+        // Some legacy rows may lack joined stock fields; fetch as fallback
+        let symbol = (userStock as any)?.symbol;
+        let name = (userStock as any)?.name;
+        let exchange = (userStock as any)?.exchange;
+        let sector = (userStock as any)?.sector;
+        let industry = (userStock as any)?.industry;
+
+        if (!symbol || !name || !exchange) {
+          try {
+            const stock = await Stock.findOne({ id: (userStock as any).stock_id } as any);
+            symbol = symbol || stock?.symbol;
+            name = name || stock?.name;
+            exchange = exchange || (stock as any)?.exchange;
+            sector = sector ?? (stock as any)?.sector;
+            industry = industry ?? (stock as any)?.industry;
+          } catch {}
+        }
+
         const data: ExportData = {
-          symbol: userStock.stock.symbol,
-          name: userStock.stock.name,
-          exchange: userStock.stock.exchange,
-          sector: userStock.stock.sector,
-          industry: userStock.stock.industry,
-          targetPrice: userStock.target_price,
-          cutoffPrice: userStock.cutoff_price,
-          groupName: undefined,
-          notes: userStock.notes,
-          addedAt: ((userStock.added_at ?? new Date()).toISOString().split('T')[0]) as string
+          symbol: symbol || '',
+          name: name || '',
+          exchange: exchange || '',
+          sector,
+          industry,
+          targetPrice: (userStock as any)?.target_price,
+          cutoffPrice: (userStock as any)?.cutoff_price,
+          groupName: (userStock as any)?.group_name,
+          notes: (userStock as any)?.notes,
+          addedAt: ((userStock as any)?.added_at ? new Date((userStock as any).added_at) : new Date()).toISOString().split('T')[0]
         };
 
         // Include current prices if requested
