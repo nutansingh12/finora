@@ -3,10 +3,12 @@ import { AuthenticatedRequest } from '../types/express';
 import { AlphaVantageService } from '../services/AlphaVantageService';
 import { validationResult } from 'express-validator';
 import { YahooFinanceIntegrationService } from '../services/YahooFinanceIntegrationService';
+import { YahooFinanceService } from '../services/YahooFinanceService';
 
 export class MarketDataController {
   private static alphaVantageService = new AlphaVantageService();
   private static integrationService = new YahooFinanceIntegrationService();
+  private static yahooService = new YahooFinanceService();
 
 
   // Get comprehensive stock data
@@ -32,20 +34,20 @@ export class MarketDataController {
         return;
       }
 
-      const stockData = await MarketDataController.alphaVantageService.getStockQuote(symbol.toUpperCase());
-
-      if (!stockData) {
-        res.status(404).json({
-          success: false,
-          message: 'Stock not found'
-        });
+      // Hybrid: try Yahoo first for richer data; fallback to Alpha Vantage
+      const yahooData = await MarketDataController.integrationService.getComprehensiveStockData(symbol.toUpperCase());
+      if (yahooData) {
+        res.json({ success: true, data: yahooData });
         return;
       }
 
-      res.json({
-        success: true,
-        data: stockData
-      });
+      const avData = await MarketDataController.alphaVantageService.getStockQuote(symbol.toUpperCase());
+      if (!avData) {
+        res.status(404).json({ success: false, message: 'Stock not found' });
+        return;
+      }
+
+      res.json({ success: true, data: avData });
     } catch (error) {
       console.error('Get stock data error:', error);
       res.status(500).json({
@@ -71,24 +73,51 @@ export class MarketDataController {
 
       let prices: any[] = [];
 
-      // Intraday support
-      if (period === 'intraday') {
-        const allowed: any = new Set(['1min','5min','15min','30min','60min']);
-        const intradayInterval = allowed.has(String(interval)) ? (String(interval) as any) : '5min';
-        prices = await MarketDataController.alphaVantageService.getIntradayData(
-          symbol.toUpperCase(),
-          intradayInterval,
-          { userId: (req as any).user?.id }
-        );
+      // Hybrid: prefer Yahoo for historical (better coverage and no key), fallback to Alpha
+      const s = symbol.toUpperCase();
+      const p = String(period);
+      const i = String(interval);
+
+      // Map to Yahoo-friendly range/interval
+      let yahooRange = '1y';
+      let yahooInterval = '1d';
+      if (p === 'intraday') {
+        // Map common intraday intervals
+        yahooRange = '1d';
+        yahooInterval = i === '1min' ? '1m' : i === '5min' ? '5m' : i === '15min' ? '15m' : i === '30min' ? '30m' : '60m';
+      } else if (p === 'weekly') {
+        yahooRange = '5y';
+        yahooInterval = '1wk';
+      } else if (p === 'monthly') {
+        yahooRange = '10y';
+        yahooInterval = '1mo';
       } else {
-        // Map period to Alpha Vantage format
-        const alphaVantagePeriod = period === 'weekly' ? 'weekly' :
-                                  period === 'monthly' ? 'monthly' : 'daily';
-        prices = await MarketDataController.alphaVantageService.getHistoricalData(
-          symbol.toUpperCase(),
-          alphaVantagePeriod as 'daily' | 'weekly' | 'monthly',
-          { userId: (req as any).user?.id }
-        );
+        yahooRange = '1y';
+        yahooInterval = '1d';
+      }
+
+      // Try Yahoo first
+      const yahooData = await MarketDataController.yahooService.getHistoricalData(s, yahooRange, yahooInterval);
+      if (yahooData && yahooData.length) {
+        prices = yahooData.map(d => ({ date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }));
+      } else {
+        // Fallback to Alpha Vantage
+        if (p === 'intraday') {
+          const allowed: any = new Set(['1min','5min','15min','30min','60min']);
+          const intradayInterval = allowed.has(i) ? (i as any) : '5min';
+          prices = await MarketDataController.alphaVantageService.getIntradayData(
+            s,
+            intradayInterval,
+            { userId: (req as any).user?.id }
+          );
+        } else {
+          const alphaVantagePeriod = p === 'weekly' ? 'weekly' : p === 'monthly' ? 'monthly' : 'daily';
+          prices = await MarketDataController.alphaVantageService.getHistoricalData(
+            s,
+            alphaVantagePeriod as 'daily' | 'weekly' | 'monthly',
+            { userId: (req as any).user?.id }
+          );
+        }
       }
 
       res.json({
@@ -187,15 +216,45 @@ export class MarketDataController {
         return;
       }
 
-      const searchResults = await MarketDataController.alphaVantageService.searchStocks(query);
+      const searchLimit = Math.min(parseInt(String(limit)) || 10, 50);
+
+      // Hybrid: prefer Yahoo symbol search; fallback to Alpha Vantage and exact symbol lookup
+      let results: any[] = [];
+      try {
+        const yahoo = await MarketDataController.yahooService.searchSymbols(String(query), searchLimit);
+        results = (yahoo || []).map((r: any) => ({
+          symbol: r.symbol,
+          name: r.longName || r.shortName || r.symbol,
+          type: r.quoteType || 'Equity',
+          region: r.exchange || '\u2014',
+          currency: 'USD'
+        }));
+      } catch (e) {
+        console.warn('Yahoo search failed, will fallback to Alpha Vantage');
+      }
+
+      if (!results.length) {
+        results = await MarketDataController.alphaVantageService.searchStocks(String(query), { userId: (req as any).user?.id });
+      }
+
+      if ((!results || results.length === 0) && /^[A-Za-z0-9.-]{1,10}$/.test(String(query))) {
+        // Exact-lookup fallback: try Yahoo first, then Alpha
+        try {
+          const yq = await MarketDataController.yahooService.getStockQuote(String(query));
+          if (yq) {
+            results = [{ symbol: yq.symbol, name: yq.longName || yq.shortName || yq.symbol, type: 'Equity', region: yq.exchange || '\u2014', currency: 'USD' }];
+          } else {
+            const aq = await MarketDataController.alphaVantageService.getStockQuote(String(query), { userId: (req as any).user?.id });
+            if (aq) {
+              results = [{ symbol: aq.symbol, name: String(query).toUpperCase(), type: 'Equity', region: '\u2014', currency: 'USD' }];
+            }
+          }
+        } catch {}
+      }
 
       res.json({
         success: true,
-        data: {
-          query,
-          results: searchResults,
-          count: searchResults.length
-        }
+        data: { query, results, count: results?.length || 0 }
       });
     } catch (error) {
       console.error('Search stocks error:', error);
