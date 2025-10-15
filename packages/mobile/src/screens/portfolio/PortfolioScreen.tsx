@@ -4,15 +4,18 @@ import {
   Text,
   Card,
   FAB,
+  IconButton,
   useTheme,
   Chip,
   Surface,
+  Snackbar,
 } from 'react-native-paper';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {StockService} from '../../services/StockService';
 import {PortfolioSummary} from '../../components/portfolio/PortfolioSummary';
 import {StockList} from '../../components/portfolio/StockList';
 import {useAuth} from '../../store/AuthContext';
+import {PortfolioService} from '../../services/PortfolioService';
 
 export const PortfolioScreen: React.FC = () => {
   const theme = useTheme();
@@ -21,6 +24,7 @@ export const PortfolioScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [snackbar, setSnackbar] = useState<{visible: boolean; message: string}>({visible:false, message:''});
 
   useEffect(() => {
     loadPortfolio();
@@ -70,12 +74,45 @@ export const PortfolioScreen: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }>
         <View style={styles.header}>
-          <Text style={[styles.title, {color: theme.colors.text}]}>
-            Portfolio
-          </Text>
-          <Text style={[styles.subtitle, {color: theme.colors.text}]}>
-            Welcome back, {user?.firstName}
-          </Text>
+          <View style={styles.headerRow}>
+            <View style={{flex: 1}}>
+              <Text style={[styles.title, {color: theme.colors.text}]}>Portfolio</Text>
+              <Text style={[styles.subtitle, {color: theme.colors.text}]}>Welcome back, {user?.firstName}</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <IconButton
+                icon="download"
+                size={20}
+                onPress={async () => {
+                  try {
+                    const {savedPath} = await PortfolioService.exportCSV();
+                    setSnackbar({visible: true, message: `Exported to\n${savedPath}`});
+                  } catch (e: any) {
+                    setSnackbar({visible: true, message: e?.message || 'Export failed'});
+                  }
+                }}
+              />
+              <IconButton
+                icon="folder"
+                size={20}
+                onPress={async () => {
+                  try {
+                    const result = await PortfolioService.pickAndImportCSV();
+                    setSnackbar({visible: true, message: `Imported ${result.successfulImports}/${result.totalRows}`});
+                    await loadPortfolio();
+                  } catch (e: any) {
+                    if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
+                    setSnackbar({visible: true, message: e?.message || 'Import failed'});
+                  }
+                }}
+              />
+            </View>
+          </View>
+          <View style={{marginTop: 6}}>
+            <Text style={styles.importHint}>
+              Tip: Select a .csv from Downloads. If files appear greyed out, open the Files app and pick the CSV.
+            </Text>
+          </View>
         </View>
 
         {portfolio && (
@@ -132,6 +169,14 @@ export const PortfolioScreen: React.FC = () => {
         )}
       </ScrollView>
 
+      <Snackbar
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({visible:false, message:''})}
+        duration={3000}
+      >
+        {snackbar.message}
+      </Snackbar>
+
       <FAB
         icon="plus"
         style={[styles.fab, {backgroundColor: theme.colors.primary}]}
@@ -157,6 +202,14 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 8,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerActions: {
+    flexDirection: 'row',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -165,6 +218,11 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     opacity: 0.7,
+  },
+  importHint: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 4,
   },
   groupsContainer: {
     paddingHorizontal: 16,
