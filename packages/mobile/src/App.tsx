@@ -3,6 +3,8 @@ import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, 
 import { StockChartModal } from './components/StockChartModal';
 import { StockService } from './services/StockService';
 import { ApiService } from './services/ApiService';
+import { PortfolioService } from './services/PortfolioService';
+
 
 import { API_BASE_URL } from './config/constants';
 
@@ -12,19 +14,15 @@ console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
 // Simple historical data service to prevent crashes
 // Robust AsyncStorage import with fallback polyfill to avoid native crash if autolink fails
 let AsyncStorage: any;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch (e) {
-  console.warn('[@RNC/AsyncStorage] not linked; using in-memory polyfill');
-  const __mem = new Map<string, string>();
-  AsyncStorage = {
-    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
-    async setItem(key: string, value: string) { __mem.set(key, value); },
-    async removeItem(key: string) { __mem.delete(key); },
-    async clear() { __mem.clear(); },
-  } as const;
-}
+// Note: do not require '@react-native-async-storage/async-storage' in this build to avoid native crashes
+console.warn('[@RNC/AsyncStorage] not linked; using in-memory polyfill');
+const __mem = new Map<string, string>();
+AsyncStorage = {
+  async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+  async setItem(key: string, value: string) { __mem.set(key, value); },
+  async removeItem(key: string) { __mem.delete(key); },
+  async clear() { __mem.clear(); },
+} as const;
 
 const historicalDataService = {
   async fetchHistoricalData(symbol: string, period: string) {
@@ -451,6 +449,38 @@ const App: React.FC = () => {
       Alert.alert('❌ Export Error', 'Failed to export CSV data. Please try again.');
     }
   };
+
+
+  // Backend-driven CSV actions (file picker + real download path)
+  const handleExportCSVBackend = async () => {
+    try {
+      console.log('[Finora] Export pressed. PortfolioService type:', typeof PortfolioService);
+      // @ts-ignore runtime check
+      console.log('[Finora] Methods:', PortfolioService && Object.keys(PortfolioService) || 'undefined');
+      const { savedPath } = await PortfolioService.exportCSV();
+      Alert.alert('Export Complete', `Saved to:\n${savedPath}`);
+    } catch (e: any) {
+      console.warn('[Finora] Export failed:', e);
+      Alert.alert('Export Failed', e?.message || 'Failed to export');
+    }
+  };
+
+  const handleImportCSVBackend = async () => {
+    try {
+      console.log('[Finora] Import pressed. PortfolioService type:', typeof PortfolioService);
+      // @ts-ignore runtime check
+      console.log('[Finora] Methods:', PortfolioService && Object.keys(PortfolioService) || 'undefined');
+      const result = await PortfolioService.pickAndImportCSV();
+      await loadUserStocksFromBackend();
+      Alert.alert('Import Complete', `Imported ${result.successfulImports}/${result.totalRows}`);
+    } catch (e: any) {
+      if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
+      console.warn('[Finora] Import failed:', e);
+      Alert.alert('Import Failed', e?.message || 'Failed to import');
+    }
+  };
+
+
 
   const importFromCSV = () => {
     Alert.alert(
@@ -1629,13 +1659,16 @@ const App: React.FC = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.stackedActionButton} onPress={exportToCSV}>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={handleExportCSVBackend}>
               <Text style={styles.stackedActionButtonText}>📤</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.stackedActionButton} onPress={importFromCSV}>
+            <TouchableOpacity style={styles.stackedActionButton} onPress={handleImportCSVBackend}>
               <Text style={styles.stackedActionButtonText}>📥</Text>
             </TouchableOpacity>
           </View>
+        </View>
+        <View style={{marginTop: 6}}>
+          <Text style={styles.importHint}>Tip: Select a .csv from Downloads. If files are greyed out, open Files and pick the CSV.</Text>
         </View>
 
         {/* Enhanced Professional Tabs */}
@@ -2110,6 +2143,11 @@ const styles = StyleSheet.create({
   dashboardContainer: {
     flex: 1,
     backgroundColor: '#1A1A1A',
+  },
+  importHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginHorizontal: 16,
   },
   loginContainer: {
     flex: 1,

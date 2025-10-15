@@ -49,6 +49,7 @@ import feedbackRoutes from './routes/feedback';
 import portfolioRoutes from './routes/portfolio';
 import usersRoutes from './routes/users';
 import jobsRoutes from './routes/jobs';
+import watchlistRoutes from './routes/watchlist';
 
 const app = express();
 // Trust reverse proxy headers (Vercel/Node serverless) so rate limiter and req.ip work correctly
@@ -129,6 +130,7 @@ app.use('/api/market', marketDataRoutes);
 app.use('/api/api-keys', require('./routes/apiKeys').default);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/jobs', jobsRoutes);
 

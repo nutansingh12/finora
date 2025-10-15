@@ -27,10 +27,10 @@ export class StockGroup extends BaseModel {
     let sortOrder = data.sort_order;
     if (sortOrder === undefined) {
       const maxOrder = await this.db(this.tableName)
-        .where('user_id', data.user_id)
+        .where('stock_groups.user_id', data.user_id)
         .max('sort_order as max_order')
         .first();
-      
+
       sortOrder = (maxOrder?.max_order || 0) + 1;
     }
 
@@ -58,16 +58,15 @@ export class StockGroup extends BaseModel {
 
     let query = this.db(this.tableName)
       .select('stock_groups.*')
-      .where('user_id', userId);
+      .where('stock_groups.user_id', userId);
 
     if (!options.includeInactive && hasGroupIsActive) {
-      query = query.where('is_active', true);
+      query = query.where('stock_groups.is_active', true);
     }
 
     if (options.includeStockCount) {
       query = query
         .select(
-          'stock_groups.*',
           this.db.raw('COUNT(user_stocks.id) as stockCount')
         )
         .leftJoin('user_stocks', (join: any) => {
@@ -79,7 +78,7 @@ export class StockGroup extends BaseModel {
         .groupBy('stock_groups.id');
     }
 
-    return query.orderBy('sort_order', 'asc');
+    return query.orderBy('stock_groups.sort_order', 'asc');
   }
 
   // Update stock group
@@ -139,7 +138,7 @@ export class StockGroup extends BaseModel {
       for (const { id, sort_order } of groupOrders) {
         await transaction(this.tableName)
           .where('id', id)
-          .where('user_id', userId)
+          .where('stock_groups.user_id', userId)
           .update({ sort_order });
       }
 
@@ -253,9 +252,9 @@ export class StockGroup extends BaseModel {
 
     // Update stocks
     return this.db('user_stocks')
-      .where('user_id', userId)
-      .whereIn('stock_id', stockIds)
-      .where('is_active', true)
+      .where('user_stocks.user_id', userId)
+      .whereIn('user_stocks.stock_id', stockIds)
+      .where('user_stocks.is_active', true)
       .update({ group_id: targetGroupId });
   }
 
@@ -271,7 +270,7 @@ export class StockGroup extends BaseModel {
         this.db.raw('COUNT(*) as total_groups'),
         this.db.raw('COUNT(CASE WHEN is_active = true THEN 1 END) as active_groups')
       )
-      .where('user_id', userId)
+      .where('stock_groups.user_id', userId)
       .first();
 
     const stockStats = await this.db('user_stocks')
@@ -279,8 +278,8 @@ export class StockGroup extends BaseModel {
         this.db.raw('COUNT(CASE WHEN group_id IS NOT NULL THEN 1 END) as stocks_in_groups'),
         this.db.raw('COUNT(CASE WHEN group_id IS NULL THEN 1 END) as ungrouped_stocks')
       )
-      .where('user_id', userId)
-      .where('is_active', true)
+      .where('user_stocks.user_id', userId)
+      .where('user_stocks.is_active', true)
       .first();
 
     return {
@@ -299,13 +298,13 @@ export class StockGroup extends BaseModel {
   ): Promise<StockGroupModel[]> {
     return this.db(this.tableName)
       .select('*')
-      .where('user_id', userId)
-      .where('is_active', true)
+      .where('stock_groups.user_id', userId)
+      .where('stock_groups.is_active', true)
       .where(function() {
-        this.where('name', 'ilike', `%${searchTerm}%`)
-            .orWhere('description', 'ilike', `%${searchTerm}%`);
+        this.where('stock_groups.name', 'ilike', `%${searchTerm}%`)
+            .orWhere('stock_groups.description', 'ilike', `%${searchTerm}%`);
       })
-      .orderBy('name', 'asc')
+      .orderBy('stock_groups.name', 'asc')
       .limit(limit);
   }
 
