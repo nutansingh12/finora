@@ -207,7 +207,10 @@ export class ImportExportService {
           }
         }
 
-        exportData.push(data);
+        // Skip rows that still lack a symbol after fallback to avoid corrupt CSV lines
+        if (data.symbol && data.symbol.trim() !== '') {
+          exportData.push(data);
+        }
       }
 
       return this.generateCSV(exportData);

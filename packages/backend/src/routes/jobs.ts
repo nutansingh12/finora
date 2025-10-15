@@ -14,5 +14,8 @@ const cronRateLimit = rateLimit({
 // Alerts tick endpoint for scheduled execution
 router.get('/alerts-tick', cronRateLimit, JobsController.alertsTick);
 
+// Maintenance endpoints (guarded by x-cron-secret or ?secret=)
+router.get('/maintenance/fix-orphans', cronRateLimit, JobsController.fixOrphans);
+
 export default router;
 

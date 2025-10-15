@@ -8,13 +8,17 @@ export class JobsController {
   private static alphaVantageService = new AlphaVantageService();
   private static stockPriceService = new StockPriceService();
 
+  private static authorizeCron(req: Request): boolean {
+    const secret = process.env.CRON_SECRET || process.env.JOBS_CRON_SECRET;
+    const headerSecret = req.header('x-cron-secret');
+    const querySecret = (req.query.secret as string) || undefined;
+    return !secret || headerSecret === secret || querySecret === secret;
+  }
+
   // Cron: fetch latest prices for stocks with active alerts and trigger notifications
   static async alertsTick(req: Request, res: Response): Promise<void> {
     try {
-      const secret = process.env.CRON_SECRET || process.env.JOBS_CRON_SECRET;
-      const headerSecret = req.header('x-cron-secret');
-      const querySecret = (req.query.secret as string) || undefined;
-      if (secret && headerSecret !== secret && querySecret !== secret) {
+      if (!JobsController.authorizeCron(req)) {
         res.status(401).json({ success: false, message: 'Unauthorized' });
         return;
       }
@@ -64,5 +68,44 @@ export class JobsController {
       res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
-}
 
+  // Maintenance: find and optionally fix orphaned user_stocks (no matching stocks row)
+  static async fixOrphans(req: Request, res: Response): Promise<void> {
+    try {
+      if (!JobsController.authorizeCron(req)) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const action = (req.query.action as string) || 'dryRun'; // 'dryRun' | 'deactivate' | 'delete'
+      const orphans = await BaseModel.db('user_stocks')
+        .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
+        .whereNull('stocks.id')
+        .select('user_stocks.id', 'user_stocks.user_id', 'user_stocks.stock_id', 'user_stocks.is_active') as Array<any>;
+
+      let affected = 0;
+      if (action === 'deactivate' && orphans.length > 0) {
+        affected = await BaseModel.db('user_stocks')
+          .whereIn('id', orphans.map(o => o.id))
+          .update({ is_active: false, updated_at: new Date() });
+      } else if (action === 'delete' && orphans.length > 0) {
+        affected = await BaseModel.db('user_stocks')
+          .whereIn('id', orphans.map(o => o.id))
+          .del();
+      }
+
+      res.json({
+        success: true,
+        data: {
+          totalOrphans: orphans.length,
+          action,
+          affected,
+          sample: orphans.slice(0, 10)
+        }
+      });
+    } catch (error) {
+      console.error('fixOrphans error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+}
