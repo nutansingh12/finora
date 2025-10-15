@@ -52,7 +52,8 @@ export const config = {
   // Yahoo Finance API Configuration
   yahooFinance: {
     apiKey: process.env.YAHOO_FINANCE_API_KEY,
-    baseUrl: process.env.YAHOO_FINANCE_BASE_URL || 'https://query1.finance.yahoo.com'
+    baseUrl: process.env.YAHOO_FINANCE_BASE_URL || 'https://query1.finance.yahoo.com',
+    useRapidApi: process.env.YAHOO_USE_RAPIDAPI === 'true'
   },
 
   // Email Configuration

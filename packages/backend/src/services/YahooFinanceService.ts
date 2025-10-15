@@ -74,7 +74,8 @@ export class YahooFinanceService {
   constructor() {
     // Check if commercial API key is available
     const commercialApiKey = ((config as any)?.yahooFinance?.apiKey as string) || process.env.YAHOO_FINANCE_API_KEY || '';
-    const useCommercialAPI = !!commercialApiKey;
+    const rapidToggle = ((config as any)?.yahooFinance?.useRapidApi === true) || process.env.YAHOO_USE_RAPIDAPI === 'true';
+    const useCommercialAPI = rapidToggle && !!commercialApiKey;
 
     // Set base URL based on API type
     const baseURL = useCommercialAPI

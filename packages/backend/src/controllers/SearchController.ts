@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { Stock } from '@/models/Stock';
 import { AlphaVantageService } from '@/services/AlphaVantageService';
+import { YahooFinanceService } from '@/services/YahooFinanceService';
 
 export class SearchController {
   private static alphaVantageService = new AlphaVantageService();
+  private static yahooService = new YahooFinanceService();
 
   // Search stocks with autocomplete
   static async searchStocks(req: Request, res: Response): Promise<any> {
@@ -36,14 +38,28 @@ export class SearchController {
         localResults = [];
       }
 
-      // Then search Alpha Vantage for additional results
-      const alphaResults = await SearchController.alphaVantageService.searchStocks(
-        query as string,
-        { userId: (req as any).user?.id }
-      );
+      // Yahoo-first: search Yahoo Finance, then Alpha Vantage as fallback
+      let yahooResults: any[] = [];
+      try {
+        yahooResults = await SearchController.yahooService.searchSymbols(String(query), searchLimit);
+      } catch (e) {
+        console.warn('Yahoo symbol search failed; continuing.');
+      }
+
+      // Then Alpha Vantage
+      let alphaResults: any[] = [];
+      try {
+        alphaResults = await SearchController.alphaVantageService.searchStocks(
+          query as string,
+          { userId: (req as any).user?.id }
+        );
+      } catch (e) {
+        console.warn('Alpha Vantage symbol search failed; continuing.');
+        alphaResults = [];
+      }
 
       // Combine and deduplicate results
-      const combinedResults = SearchController.combineSearchResults(localResults, alphaResults);
+      const combinedResults = SearchController.combineSearchResults(localResults, yahooResults, alphaResults);
 
       // Limit final results
       const suggestions = combinedResults.slice(0, searchLimit);
@@ -97,29 +113,34 @@ export class SearchController {
         });
       }
 
-      // Get latest quote from Alpha Vantage (prefer per-user key if available)
-      const quote = await SearchController.alphaVantageService.getStockQuote(symbol, {
-        userId: (req as any).user?.id
-      });
+      // Hybrid: try Yahoo first, fallback to Alpha Vantage (per-user key)
+      const yq = await SearchController.yahooService.getStockQuote(symbol);
+      let quote: any = null;
+      if (yq) {
+        quote = {
+          symbol: yq.symbol,
+          price: yq.regularMarketPrice,
+          change: yq.regularMarketChange,
+          changePercent: yq.regularMarketChangePercent,
+          volume: yq.regularMarketVolume,
+          marketCap: yq.marketCap,
+          peRatio: undefined,
+          fiftyTwoWeekLow: yq.fiftyTwoWeekLow,
+          fiftyTwoWeekHigh: yq.fiftyTwoWeekHigh,
+          timestamp: Date.now()
+        };
+      } else {
+        quote = await SearchController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
+      }
 
       if (!quote) {
-        return res.status(404).json({
-          success: false,
-          message: 'Unable to fetch current quote'
-        });
+        return res.status(404).json({ success: false, message: 'Unable to fetch current quote' });
       }
 
       res.json({
         success: true,
         data: {
-          stock: {
-            id: stock.id,
-            symbol: stock.symbol,
-            name: stock.name,
-            exchange: stock.exchange,
-            sector: stock.sector,
-            industry: stock.industry
-          },
+          stock: { id: stock.id, symbol: stock.symbol, name: stock.name, exchange: stock.exchange, sector: stock.sector, industry: stock.industry },
           quote: {
             price: quote.price,
             change: quote.change,
@@ -127,8 +148,8 @@ export class SearchController {
             volume: quote.volume,
             marketCap: quote.marketCap,
             peRatio: quote.peRatio,
-            fiftyTwoWeekLow: null,
-            fiftyTwoWeekHigh: null,
+            fiftyTwoWeekLow: quote.fiftyTwoWeekLow ?? null,
+            fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh ?? null,
             lastUpdated: quote.timestamp
           }
         }
@@ -161,28 +182,43 @@ export class SearchController {
         });
       }
 
-      const results: any[] = [];
-      for (const sym of symbols) {
-        const q = await SearchController.alphaVantageService.getStockQuote(sym, {
-          userId: (req as any).user?.id
-        });
-        if (q) {
-          results.push({
-            symbol: q.symbol,
-            name: sym,
-            price: q.price,
-            change: q.change,
-            changePercent: q.changePercent,
-            volume: q.volume,
-            marketCap: q.marketCap,
-            lastUpdated: q.timestamp
-          });
-        }
-        // small delay to be gentle with rate limits across keys
-        await new Promise(r => setTimeout(r, 250));
+      // Hybrid: try Yahoo in batches, fallback per-symbol to Alpha if missing
+      const yahooQuotes = await SearchController.yahooService.getMultipleQuotes(symbols);
+      const map: Record<string, any> = {};
+      for (const y of yahooQuotes) {
+        map[y.symbol] = {
+          symbol: y.symbol,
+          name: y.longName || y.shortName || y.symbol,
+          price: y.regularMarketPrice,
+          change: y.regularMarketChange,
+          changePercent: y.regularMarketChangePercent,
+          volume: y.regularMarketVolume,
+          marketCap: y.marketCap,
+          lastUpdated: Date.now()
+        };
       }
 
-      const formattedQuotes = results;
+      // Fill gaps with Alpha Vantage (with small delays)
+      for (const sym of symbols) {
+        if (!map[sym]) {
+          const q = await SearchController.alphaVantageService.getStockQuote(sym, { userId: (req as any).user?.id });
+          if (q) {
+            map[sym] = {
+              symbol: q.symbol,
+              name: sym,
+              price: q.price,
+              change: q.change,
+              changePercent: q.changePercent,
+              volume: q.volume,
+              marketCap: q.marketCap,
+              lastUpdated: q.timestamp
+            };
+          }
+          await new Promise(r => setTimeout(r, 250));
+        }
+      }
+
+      const formattedQuotes = symbols.map(sym => map[sym]).filter(Boolean);
 
       res.json({
         success: true,
@@ -293,7 +329,7 @@ export class SearchController {
   }
 
   // Private helper methods
-  private static combineSearchResults(localResults: any[], alphaResults: any[]): any[] {
+  private static combineSearchResults(localResults: any[], yahooResults: any[], alphaResults: any[]): any[] {
     const symbolSet = new Set();
     const combined: any[] = [];
 
@@ -313,8 +349,25 @@ export class SearchController {
       }
     }
 
-    // Add Alpha Vantage results that aren't already included
-    for (const result of alphaResults) {
+    // Add Yahoo results
+    for (const result of (yahooResults || [])) {
+      const symbol = result.symbol;
+      if (!symbolSet.has(symbol)) {
+        symbolSet.add(symbol);
+        combined.push({
+          symbol,
+          name: result.longName || result.shortName || symbol,
+          exchange: result.exchange,
+          sector: result.sector,
+          industry: result.industry,
+          type: (result.quoteType || 'stock').toLowerCase(),
+          source: 'yahoo'
+        });
+      }
+    }
+
+    // Add Alpha Vantage results
+    for (const result of (alphaResults || [])) {
       if (!symbolSet.has(result.symbol)) {
         symbolSet.add(result.symbol);
         combined.push({
