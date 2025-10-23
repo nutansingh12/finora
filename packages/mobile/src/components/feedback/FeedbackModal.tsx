@@ -12,7 +12,6 @@ import {
   Platform
 } from 'react-native';
 import { captureScreen } from 'react-native-view-shot';
-import DeviceInfo from 'react-native-device-info';
 import { Ionicons } from '@expo/vector-icons';
 import { styles } from './FeedbackModal.styles';
 import { API_BASE_URL } from '../../config/constants';
@@ -62,21 +61,20 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
 
   const getDeviceInfo = async () => {
     const { width, height } = Dimensions.get('window');
-    
     return {
-      deviceId: await DeviceInfo.getDeviceId(),
-      brand: await DeviceInfo.getBrand(),
-      model: await DeviceInfo.getModel(),
-      systemName: await DeviceInfo.getSystemName(),
-      systemVersion: await DeviceInfo.getSystemVersion(),
-      appVersion: await DeviceInfo.getVersion(),
-      buildNumber: await DeviceInfo.getBuildNumber(),
-      bundleId: await DeviceInfo.getBundleId(),
+      deviceId: 'unknown',
+      brand: Platform.OS,
+      model: 'unknown',
+      systemName: Platform.OS,
+      systemVersion: String(Platform.Version ?? ''),
+      appVersion: 'unknown',
+      buildNumber: 'unknown',
+      bundleId: 'unknown',
       screen: { width, height },
       platform: Platform.OS,
-      isTablet: await DeviceInfo.isTablet(),
-      hasNotch: await DeviceInfo.hasNotch(),
-      timestamp: new Date().toISOString()
+      isTablet: false,
+      hasNotch: false,
+      timestamp: new Date().toISOString(),
     };
   };
 
