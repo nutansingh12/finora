@@ -188,16 +188,17 @@ const startServer = async () => {
   }
 };
 
-// Handle uncaught exceptions
+// Handle uncaught exceptions (do not exit in serverless/Vercel to avoid FUNCTION_INVOCATION_FAILED)
+const isServerless = process.env.VERCEL === '1';
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
-  process.exit(1);
+  if (!isServerless) process.exit(1);
 });
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections (graceful on Vercel)
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
+  if (!isServerless) process.exit(1);
 });
 
 // Start the server only when not running on Vercel (serverless)
