@@ -11,8 +11,6 @@ import {
   Dimensions,
   Platform
 } from 'react-native';
-import { captureScreen } from 'react-native-view-shot';
-import { Ionicons } from '@expo/vector-icons';
 import { styles } from './FeedbackModal.styles';
 import { API_BASE_URL } from '../../config/constants';
 import { ApiService } from '../../services/ApiService';
@@ -47,14 +45,15 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
 
   const captureScreenshot = async (): Promise<string | null> => {
     try {
+      const { captureScreen } = require('react-native-view-shot');
       const uri = await captureScreen({
         format: 'png',
         quality: 0.7,
         result: 'base64'
       });
       return `data:image/png;base64,${uri}`;
-    } catch (error) {
-      console.error('Screenshot capture failed:', error);
+    } catch (error: any) {
+      console.warn('Screenshot not available; skipping:', error?.message || error);
       return null;
     }
   };
@@ -144,11 +143,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
             style={styles.starButton}
             disabled={isSubmitting}
           >
-            <Ionicons
-              name={star <= rating ? 'star' : 'star-outline'}
-              size={32}
-              color={star <= rating ? '#FFD700' : '#D1D5DB'}
-            />
+            <Text style={{ fontSize: 28, color: star <= rating ? '#FFD700' : '#D1D5DB' }}>
+              {star <= rating ? '★' : '☆'}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -188,7 +185,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
             style={styles.closeButton}
             disabled={isSubmitting}
           >
-            <Ionicons name="close" size={24} color="#6B7280" />
+            <Text style={{ fontSize: 20, color: '#6B7280' }}>✕</Text>
           </TouchableOpacity>
         </View>
 
@@ -227,14 +224,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
               onPress={() => setIncludeScreenshot(!includeScreenshot)}
               disabled={isSubmitting}
             >
-              <Ionicons
-                name={includeScreenshot ? 'checkbox' : 'checkbox-outline'}
-                size={20}
-                color="#2563EB"
-              />
+              <Text style={{ fontSize: 18, color: '#2563EB' }}>
+                {includeScreenshot ? '\u2611' : '\u2610'}
+              </Text>
               <View style={styles.checkboxTextContainer}>
                 <View style={styles.checkboxLabelContainer}>
-                  <Ionicons name="camera" size={16} color="#6B7280" />
+                  <Text style={{ fontSize: 14, color: '#6B7280' }}>\ud83d\udcf7</Text>
                   <Text style={styles.checkboxLabel}>Include screenshot</Text>
                 </View>
                 <Text style={styles.checkboxDescription}>
@@ -260,7 +255,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
               </View>
             ) : (
               <View style={styles.submitButtonContent}>
-                <Ionicons name="send" size={16} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontSize: 16 }}>\u27A4</Text>
                 <Text style={styles.submitButtonText}>Submit Feedback</Text>
               </View>
             )}

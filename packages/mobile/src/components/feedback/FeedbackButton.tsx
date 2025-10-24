@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { FeedbackModal } from './FeedbackModal';
 
 interface FeedbackButtonProps {
   variant?: 'floating' | 'inline' | 'header';
@@ -47,23 +45,23 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   const renderContent = () => {
     switch (variant) {
       case 'floating':
-        return <Ionicons name="chatbubble" size={24} color="#FFFFFF" />;
+        return <Text style={{ color: '#FFFFFF', fontSize: 20 }}>💬</Text>;
       case 'inline':
         return (
           <View style={styles.inlineContent}>
-            <Ionicons name="star" size={16} color="#FFFFFF" />
+            <Text style={{ color: '#FFFFFF', fontSize: 14 }}>⭐</Text>
             <Text style={getTextStyle()}>Feedback</Text>
           </View>
         );
       case 'header':
         return (
           <View style={styles.headerContent}>
-            <Ionicons name="chatbubble-outline" size={16} color="#6B7280" />
+            <Text style={{ color: '#6B7280', fontSize: 14 }}>💬</Text>
             <Text style={getTextStyle()}>Feedback</Text>
           </View>
         );
       default:
-        return <Ionicons name="chatbubble" size={24} color="#FFFFFF" />;
+        return <Text style={{ color: '#FFFFFF', fontSize: 20 }}>💬</Text>;
     }
   };
 
@@ -77,10 +75,15 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
         {renderContent()}
       </TouchableOpacity>
 
-      <FeedbackModal 
-        visible={isModalVisible} 
-        onClose={() => setIsModalVisible(false)} 
-      />
+      {isModalVisible ? (() => {
+        try {
+          const { FeedbackModal } = require('./FeedbackModal');
+          return <FeedbackModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} />;
+        } catch (e: any) {
+          console.warn('Feedback modal unavailable:', e?.message || e);
+          return null;
+        }
+      })() : null}
     </>
   );
 };

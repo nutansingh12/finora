@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { FeedbackModal } from './components/feedback/FeedbackModal';
 import {View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, FlatList} from 'react-native';
 import { StockChartModal } from './components/StockChartModal';
 import { StockService } from './services/StockService';
@@ -11,6 +10,18 @@ import { API_BASE_URL } from './config/constants';
 
 
 console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
+
+// Lazy loader to avoid loading FeedbackModal (and any optional deps) until needed
+const FeedbackModalLoader: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+  if (!visible) return null;
+  try {
+    const { FeedbackModal } = require('./components/feedback/FeedbackModal');
+    return <FeedbackModal visible={visible} onClose={onClose} />;
+  } catch (e: any) {
+    console.warn('Feedback modal unavailable:', e?.message || e);
+    return null;
+  }
+};
 
 // Simple historical data service to prevent crashes
 // Robust AsyncStorage import with fallback polyfill to avoid native crash if autolink fails
@@ -1757,7 +1768,7 @@ const App: React.FC = () => {
             <TouchableOpacity style={styles.userActionButton} onPress={handleLogout}>
               <Text style={styles.userActionButtonText}>🚪</Text>
             </TouchableOpacity>
-        <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
+        <FeedbackModalLoader visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
 
           </View>
         </View>

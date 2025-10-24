@@ -1,7 +1,7 @@
 import React from 'react';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createStackNavigator} from '@react-navigation/stack';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { Text } from 'react-native';
 import {useTheme} from 'react-native-paper';
 
 // Screens
@@ -41,26 +41,26 @@ const MainTabs: React.FC = () => {
     <Tab.Navigator
       screenOptions={({route}) => ({
         tabBarIcon: ({focused, color, size}) => {
-          let iconName: string;
+          let emoji: string;
 
           switch (route.name) {
             case 'Portfolio':
-              iconName = 'pie-chart';
+              emoji = '📊';
               break;
             case 'Search':
-              iconName = 'search';
+              emoji = '🔎';
               break;
             case 'Alerts':
-              iconName = 'notifications';
+              emoji = '🔔';
               break;
             case 'Profile':
-              iconName = 'person';
+              emoji = '👤';
               break;
             default:
-              iconName = 'help';
+              emoji = '❓';
           }
 
-          return <Icon name={iconName} size={size} color={color} />;
+          return <Text style={{ fontSize: size, color }}>{emoji}</Text>;
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
