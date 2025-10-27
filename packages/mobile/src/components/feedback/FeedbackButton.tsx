@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
+import { FeedbackModal } from './FeedbackModal';
 
 interface FeedbackButtonProps {
   variant?: 'floating' | 'inline' | 'header';
@@ -75,15 +76,9 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
         {renderContent()}
       </TouchableOpacity>
 
-      {isModalVisible ? (() => {
-        try {
-          const { FeedbackModal } = require('./FeedbackModal');
-          return <FeedbackModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} />;
-        } catch (e: any) {
-          console.warn('Feedback modal unavailable:', e?.message || e);
-          return null;
-        }
-      })() : null}
+      {isModalVisible ? (
+        <FeedbackModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} />
+      ) : null}
     </>
   );
 };

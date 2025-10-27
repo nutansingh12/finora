@@ -7,20 +7,14 @@ import { PortfolioService } from './services/PortfolioService';
 
 
 import { API_BASE_URL } from './config/constants';
-
+import { FeedbackModal } from './components/feedback/FeedbackModal';
 
 console.log('🌐 API_BASE_URL configured as:', API_BASE_URL);
 
-// Lazy loader to avoid loading FeedbackModal (and any optional deps) until needed
+// Feedback modal wrapper (render only when visible)
 const FeedbackModalLoader: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
   if (!visible) return null;
-  try {
-    const { FeedbackModal } = require('./components/feedback/FeedbackModal');
-    return <FeedbackModal visible={visible} onClose={onClose} />;
-  } catch (e: any) {
-    console.warn('Feedback modal unavailable:', e?.message || e);
-    return null;
-  }
+  return <FeedbackModal visible={visible} onClose={onClose} />;
 };
 
 // Simple historical data service to prevent crashes
