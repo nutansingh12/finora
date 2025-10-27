@@ -30,7 +30,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
   const [rating, setRating] = useState<number>(0);
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [includeScreenshot, setIncludeScreenshot] = useState<boolean>(true);
+  const [includeScreenshot, setIncludeScreenshot] = useState<boolean>(false);
 
   const resetForm = () => {
     setRating(0);
@@ -44,18 +44,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ visible, onClose }
   };
 
   const captureScreenshot = async (): Promise<string | null> => {
-    try {
-      const { captureScreen } = require('react-native-view-shot');
-      const uri = await captureScreen({
-        format: 'png',
-        quality: 0.7,
-        result: 'base64'
-      });
-      return `data:image/png;base64,${uri}`;
-    } catch (error: any) {
-      console.warn('Screenshot not available; skipping:', error?.message || error);
-      return null;
-    }
+    // Screenshot capture module is not included; return null gracefully
+    console.warn('Screenshot capture not available in this build; proceeding without screenshot');
+    return null;
   };
 
   const getDeviceInfo = async () => {

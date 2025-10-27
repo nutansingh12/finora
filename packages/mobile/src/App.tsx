@@ -438,7 +438,6 @@ const App: React.FC = () => {
     }
   };
 
-  const manualRefresh = () => { fetchLiveQuotes(); };
 
   useEffect(() => {
     if (watchlist.length === 0) return;
@@ -1784,9 +1783,6 @@ const App: React.FC = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.stackedActionButton} onPress={manualRefresh}>
-              <Text style={styles.stackedActionButtonText}>🔄</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.stackedActionButton} onPress={handleExportCSVBackend}>
               <Text style={styles.stackedActionButtonText}>📤</Text>
             </TouchableOpacity>
