@@ -6,13 +6,58 @@ import { Feedback } from '../models/Feedback';
 export class FeedbackController {
   private static feedbackService = new FeedbackService();
 
+  // Serverless-safe: ensure feedback table exists before any operation
+  private static schemaReady: Promise<void> | null = null;
+  private static ensureSchema(): Promise<void> {
+    if (this.schemaReady) return this.schemaReady;
+    this.schemaReady = (async () => {
+      try {
+        const knex = (Feedback as any).db as import('knex').Knex;
+        const has = await knex.schema.hasTable('feedback');
+        if (!has) {
+          console.log('ℹ️ [Controller] Creating feedback table');
+          await knex.schema.createTable('feedback', (t: any) => {
+            t.uuid('id').primary();
+            t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+            t.integer('rating').notNullable();
+            t.text('feedback_text');
+            t.text('page_url');
+            t.text('user_agent');
+            t.text('screenshot_path');
+            t.jsonb('device_info');
+            t.string('app_version');
+            t.enu('platform', ['web','mobile','desktop']).notNullable();
+            t.enu('status', ['pending','sent','failed']).notNullable().defaultTo('pending');
+            t.timestamp('email_sent_at');
+            t.text('error_message');
+            t.timestamps(true, true);
+            t.index(['user_id']);
+            t.index(['created_at']);
+            t.index(['platform']);
+            t.index(['status']);
+          });
+          console.log('✅ [Controller] Feedback table created');
+        }
+      } catch (e) {
+        const msg = (e && (e as any).message) || String(e);
+        if (!msg.includes('already exists')) {
+          console.error('⚠️ [Controller] ensureSchema error:', e);
+        }
+      }
+    })();
+    return this.schemaReady;
+  }
+
   /**
    * Submit feedback with screenshot
    */
   static async submitFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
+      // Ensure schema exists before proceeding
+      await FeedbackController.ensureSchema();
+
       const userId = req.user?.id;
-      
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -92,8 +137,10 @@ export class FeedbackController {
    */
   static async getUserFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
+      await FeedbackController.ensureSchema();
+
       const userId = req.user?.id;
-      
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -118,8 +165,8 @@ export class FeedbackController {
             email_sent_at: f.email_sent_at
           })),
           totalFeedback: feedback.length,
-          averageRating: feedback.length > 0 
-            ? feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length 
+          averageRating: feedback.length > 0
+            ? feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length
             : 0
         }
       });
@@ -138,6 +185,7 @@ export class FeedbackController {
    */
   static async getFeedbackStatistics(req: Request, res: Response): Promise<void> {
     try {
+      await FeedbackController.ensureSchema();
       const stats = await FeedbackController.feedbackService.getFeedbackStatistics();
 
       res.json({
@@ -159,6 +207,7 @@ export class FeedbackController {
    */
   static async getRecentFeedback(req: Request, res: Response): Promise<void> {
     try {
+      await FeedbackController.ensureSchema();
       const limit = parseInt(req.query.limit as string) || 10;
       const feedback = await FeedbackController.feedbackService.getRecentFeedback(limit);
 
@@ -195,6 +244,7 @@ export class FeedbackController {
    */
   static async resendFailedEmails(req: Request, res: Response): Promise<void> {
     try {
+      await FeedbackController.ensureSchema();
       const result = await FeedbackController.feedbackService.resendFailedEmails();
 
       res.json({
@@ -217,8 +267,9 @@ export class FeedbackController {
    */
   static async getFeedbackByRating(req: Request, res: Response): Promise<void> {
     try {
+      await FeedbackController.ensureSchema();
       const rating = parseInt((req.params.rating as string) || '0');
-      
+
       if (!rating || rating < 1 || rating > 5) {
         res.status(400).json({
           success: false,
