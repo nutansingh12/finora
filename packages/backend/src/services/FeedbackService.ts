@@ -60,8 +60,8 @@ export class FeedbackService {
             table.text('screenshot_path');
             table.jsonb('device_info');
             table.string('app_version');
-            table.enu('platform', ['web','mobile','desktop']).notNullable();
-            table.enu('status', ['pending','sent','failed']).notNullable().defaultTo('pending');
+            table.string('platform', 16).notNullable(); // 'web' | 'mobile' | 'desktop'
+            table.string('status', 16).notNullable().defaultTo('pending'); // 'pending' | 'sent' | 'failed'
             table.timestamp('email_sent_at');
             table.text('error_message');
             table.timestamps(true, true);

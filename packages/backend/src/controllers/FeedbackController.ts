@@ -26,8 +26,8 @@ export class FeedbackController {
             t.text('screenshot_path');
             t.jsonb('device_info');
             t.string('app_version');
-            t.enu('platform', ['web','mobile','desktop']).notNullable();
-            t.enu('status', ['pending','sent','failed']).notNullable().defaultTo('pending');
+            t.string('platform', 16).notNullable(); // 'web' | 'mobile' | 'desktop'
+            t.string('status', 16).notNullable().defaultTo('pending'); // 'pending' | 'sent' | 'failed'
             t.timestamp('email_sent_at');
             t.text('error_message');
             t.timestamps(true, true);
