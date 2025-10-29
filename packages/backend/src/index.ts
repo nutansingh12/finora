@@ -51,6 +51,44 @@ import usersRoutes from './routes/users';
 import jobsRoutes from './routes/jobs';
 import watchlistRoutes from './routes/watchlist';
 
+// Bootstrap minimal schema for feedback on cold start (serverless-safe)
+(async () => {
+  try {
+    const { Feedback } = require('./models/Feedback');
+    const knex = (Feedback as any).db as import('knex').Knex;
+    const has = await knex.schema.hasTable('feedback');
+    if (!has) {
+      console.log('ℹ️ Bootstrapping feedback table at startup');
+      await knex.schema.createTable('feedback', (t: any) => {
+        t.uuid('id').primary();
+        t.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+        t.integer('rating').notNullable();
+        t.text('feedback_text');
+        t.text('page_url');
+        t.text('user_agent');
+        t.text('screenshot_path');
+        t.jsonb('device_info');
+        t.string('app_version');
+        t.enu('platform', ['web','mobile','desktop']).notNullable();
+        t.enu('status', ['pending','sent','failed']).notNullable().defaultTo('pending');
+        t.timestamp('email_sent_at');
+        t.text('error_message');
+        t.timestamps(true, true);
+        t.index(['user_id']);
+        t.index(['created_at']);
+        t.index(['platform']);
+        t.index(['status']);
+      });
+      console.log('✅ Feedback table bootstrapped');
+    }
+  } catch (e) {
+    const msg = (e && (e as any).message) || String(e);
+    if (!msg.includes('already exists')) {
+      console.error('⚠️ Feedback bootstrap error (continuing):', e);
+    }
+  }
+})();
+
 const app = express();
 // Trust reverse proxy headers (Vercel/Node serverless) so rate limiter and req.ip work correctly
 app.set('trust proxy', 1);
