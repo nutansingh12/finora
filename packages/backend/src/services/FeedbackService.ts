@@ -41,11 +41,58 @@ export class FeedbackService {
     }
   }
 
+  // Ensure the feedback table exists (serverless-safe). Creates table on first use if missing.
+  private schemaReadyPromise: Promise<void> | null = null;
+  private async ensureSchema(): Promise<void> {
+    if (this.schemaReadyPromise) return this.schemaReadyPromise;
+    this.schemaReadyPromise = (async () => {
+      try {
+        const hasTable = await (Feedback as any).db.schema.hasTable('feedback');
+        if (!hasTable) {
+          console.log('ℹ️ Creating feedback table (auto-bootstrap)');
+          await (Feedback as any).db.schema.createTable('feedback', (table: any) => {
+            table.uuid('id').primary(); // id will be supplied by app using crypto.randomUUID()
+            table.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+            table.integer('rating').notNullable();
+            table.text('feedback_text');
+            table.text('page_url');
+            table.text('user_agent');
+            table.text('screenshot_path');
+            table.jsonb('device_info');
+            table.string('app_version');
+            table.enu('platform', ['web','mobile','desktop']).notNullable();
+            table.enu('status', ['pending','sent','failed']).notNullable().defaultTo('pending');
+            table.timestamp('email_sent_at');
+            table.text('error_message');
+            table.timestamps(true, true);
+            // Indexes commonly queried
+            table.index(['user_id']);
+            table.index(['created_at']);
+            table.index(['platform']);
+            table.index(['status']);
+          });
+          console.log('✅ Feedback table created');
+        }
+      } catch (err) {
+        // Ignore table exists race; rethrow others for visibility but don't crash function on Vercel
+        const msg = (err && (err as any).message) || String(err);
+        if (!msg.includes('already exists')) {
+          console.error('ensureSchema error (feedback table):', err);
+        }
+      }
+    })();
+    return this.schemaReadyPromise;
+  }
+
+
   /**
    * Submit feedback with screenshot
    */
   async submitFeedback(data: FeedbackCreationData): Promise<FeedbackSubmissionResult> {
     try {
+      // Ensure schema exists on first use (handles fresh environments)
+      await this.ensureSchema();
+
       // Create feedback record
       const feedback = await Feedback.createFeedback(data);
 
@@ -53,7 +100,7 @@ export class FeedbackService {
       let screenshotPath: string | undefined;
       if (data.screenshot_base64) {
         screenshotPath = await this.saveScreenshot(feedback.id, data.screenshot_base64);
-        
+
         // Update feedback with screenshot path
         await Feedback.updateById(feedback.id, {
           screenshot_path: screenshotPath
@@ -93,7 +140,7 @@ export class FeedbackService {
     try {
       // Remove data URL prefix if present
       const base64Image = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
-      
+
       // Generate filename
       const filename = `feedback_${feedbackId}_${Date.now()}.png`;
       const filepath = path.join(this.screenshotDir, filename);
@@ -124,11 +171,11 @@ export class FeedbackService {
 
       // Prepare email content
       const emailSubject = `Finora App Feedback - ${feedback.rating} Star${feedback.rating !== 1 ? 's' : ''} from ${user.first_name} ${user.last_name}`;
-      
+
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #2563eb;">New Feedback Received</h2>
-          
+
           <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="margin-top: 0; color: #1e40af;">User Information</h3>
             <p><strong>Name:</strong> ${user.first_name} ${user.last_name}</p>
@@ -191,7 +238,7 @@ export class FeedbackService {
       // Send email
       await this.transporter.sendMail(mailOptions);
       console.log(`✅ Feedback email sent successfully for feedback ID: ${feedback.id}`);
-      
+
       return true;
 
     } catch (error) {
@@ -224,7 +271,7 @@ export class FeedbackService {
 
     for (const feedback of pendingFeedback) {
       const emailSent = await this.sendFeedbackEmail(feedback, feedback.screenshot_path);
-      
+
       if (emailSent) {
         await Feedback.updateStatus(feedback.id, 'sent');
         successCount++;

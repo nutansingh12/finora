@@ -1,4 +1,5 @@
 import { BaseModel } from './BaseModel';
+import { randomUUID } from 'crypto';
 
 export interface FeedbackModel {
   id: string;
@@ -38,6 +39,7 @@ export class Feedback extends BaseModel {
    */
   static async createFeedback(data: FeedbackCreationData): Promise<FeedbackModel> {
     const feedbackData: Partial<FeedbackModel> = {
+      id: randomUUID(),
       user_id: data.user_id,
       rating: data.rating,
       feedback_text: data.feedback_text,
