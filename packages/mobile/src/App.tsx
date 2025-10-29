@@ -17,18 +17,35 @@ const FeedbackModalLoader: React.FC<{ visible: boolean; onClose: () => void }> =
   return <FeedbackModal visible={visible} onClose={onClose} />;
 };
 
-// Simple historical data service to prevent crashes
-// Robust AsyncStorage import with fallback polyfill to avoid native crash if autolink fails
-let AsyncStorage: any;
-// Note: do not require '@react-native-async-storage/async-storage' in this build to avoid native crashes
-console.warn('[@RNC/AsyncStorage] not linked; using in-memory polyfill');
+// File-backed storage via react-native-fs with in-memory fallback
+let Storage: any;
 const __mem = new Map<string, string>();
-AsyncStorage = {
-  async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
-  async setItem(key: string, value: string) { __mem.set(key, value); },
-  async removeItem(key: string) { __mem.delete(key); },
-  async clear() { __mem.clear(); },
-} as const;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const RNFS = require('react-native-fs');
+  const STORE_PATH = `${RNFS.DocumentDirectoryPath}/finora_store.json`;
+  const readStore = async (): Promise<Record<string, string>> => {
+    try { const s = await RNFS.readFile(STORE_PATH, 'utf8'); return JSON.parse(s || '{}'); } catch { return {}; }
+  };
+  const writeStore = async (obj: Record<string, string>) => {
+    try { await RNFS.writeFile(STORE_PATH, JSON.stringify(obj), 'utf8'); } catch {}
+  };
+  Storage = {
+    async getItem(key: string) { const o = await readStore(); return (o[key] ?? null) as string | null; },
+    async setItem(key: string, value: string) { const o = await readStore(); o[key] = value; await writeStore(o); },
+    async removeItem(key: string) { const o = await readStore(); delete o[key]; await writeStore(o); },
+    async clear() { await writeStore({}); },
+  };
+  console.log('[Finora] Storage: RNFS file-backed');
+} catch {
+  Storage = {
+    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+    async setItem(key: string, value: string) { __mem.set(key, value); },
+    async removeItem(key: string) { __mem.delete(key); },
+    async clear() { __mem.clear(); },
+  } as const;
+  console.warn('[Finora] Storage: in-memory fallback');
+}
 
 const historicalDataService = {
   async fetchHistoricalData(symbol: string, period: string) {
@@ -104,7 +121,7 @@ const SORTING_OPTIONS = [
 const SafeStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
-      return await AsyncStorage.getItem(key);
+      return await Storage.getItem(key);
     } catch (error) {
       console.warn('Storage getItem failed, using fallback:', error);
       return null;
@@ -113,7 +130,7 @@ const SafeStorage = {
 
   async setItem(key: string, value: string): Promise<void> {
     try {
-      await AsyncStorage.setItem(key, value);
+      await Storage.setItem(key, value);
       console.log('✅ Storage saved:', key, `${value.length} chars`);
     } catch (error) {
       console.warn('Storage setItem failed, using fallback:', error);
@@ -168,7 +185,8 @@ const App: React.FC = () => {
         if (storedToken) {
           ApiService.setAuthToken(storedToken);
           setIsAuthenticated(true);
-          await loadUserGroups();
+          // Load groups without blocking UI
+          loadUserGroups().catch(() => {});
         }
       } catch (error) {
         console.error('Error initializing app:', error);
@@ -187,8 +205,9 @@ const App: React.FC = () => {
   // Load groups when user becomes authenticated
   React.useEffect(() => {
     if (isAuthenticated) {
-      loadUserGroups();
-      // Now that we have auth, load server stocks
+      // Fire and forget to avoid blocking UI
+      loadUserGroups().catch(() => {});
+      // Now that we have auth, load server stocks progressively
       loadUserStocksFromBackend();
     }
   }, [isAuthenticated]);
@@ -879,18 +898,28 @@ const App: React.FC = () => {
   };
 
 
-  // Load user's stocks from backend and map to local structure
+  // Load user's stocks progressively in pages to avoid long blocking on large lists
   const loadUserStocksFromBackend = async () => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/stocks`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ApiService.getAuthToken() ?? ''}`
+      const auth = ApiService.getAuthToken() ?? '';
+      const pageSize = 100;
+      let offset = 0;
+      let firstPage = true;
+      // Continue fetching until a page smaller than pageSize is returned
+      // Render the first page immediately; append subsequent pages in background
+      for (;;) {
+        const resp = await fetch(`${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}` as any, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${auth}`
+          }
+        });
+        const json = await resp.json();
+        if (!(resp.ok && json.success)) {
+          console.error('Failed to load user stocks:', json?.message);
+          break;
         }
-      });
-      const json = await resp.json();
-      if (resp.ok && json.success) {
-        const stocks = (json.data?.stocks || []).map((s: any) => sanitizeStock({
+        const page = (json.data?.stocks || []).map((s: any) => sanitizeStock({
           symbol: s.symbol,
           name: s.name || s.symbol,
           exchange: s.exchange || 'Unknown',
@@ -900,17 +929,25 @@ const App: React.FC = () => {
           changePercent: Number(s.price_change_percent ?? 0),
           cutoffPrice: Number(s.cutoff_price ?? 0),
           target: Number(s.target_price ?? s.cutoff_price ?? 0),
-          group: s.group_name || 'Watchlist',
+          group: s.group_name || s.group || 'Watchlist',
           alerts: Array.isArray(s.alerts) ? s.alerts : [],
           lastUpdated: new Date().toISOString(),
         }));
-        if (stocks.length > 0) {
-          setWatchlist(stocks);
+        if (page.length === 0) break;
+        if (firstPage) {
+          setWatchlist(page);
+          firstPage = false;
         } else {
-          console.log('Backend returned 0 stocks; retaining current list');
+          setWatchlist(prev => {
+            const dedupe = new Map<string, any>();
+            [...prev, ...page].forEach((st: any) => dedupe.set(String(st.symbol).toUpperCase(), st));
+            return Array.from(dedupe.values());
+          });
         }
-      } else {
-        console.error('Failed to load user stocks:', json.message);
+        if (page.length < pageSize) break;
+        offset += pageSize;
+        // yield to UI to keep it responsive
+        await new Promise<void>((res) => setTimeout(res, 100));
       }
     } catch (e) {
       console.error('Error loading user stocks:', e);
@@ -1074,8 +1111,8 @@ const App: React.FC = () => {
 
         setIsAuthenticated(true);
 
-        // Load user's groups from backend
-        await loadUserGroups();
+        // Load user's groups from backend (non-blocking)
+        loadUserGroups().catch(() => {});
 
         Alert.alert('Welcome to Finora!', `${successMessage}\n\nHello ${data.user.firstName}! You're now logged in.`, [
           {
@@ -1191,8 +1228,8 @@ const App: React.FC = () => {
 
         setIsAuthenticated(true);
 
-        // Load user's groups from backend
-        await loadUserGroups();
+        // Load user's groups from backend (non-blocking)
+        loadUserGroups().catch(() => {});
 
         Alert.alert('Welcome!', `Hello ${data.user?.firstName || ''}! You're now logged in.`);
       } else {

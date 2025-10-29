@@ -1,15 +1,35 @@
 import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse} from 'axios';
-// Safe AsyncStorage with runtime probe and in-memory fallback
+// File-backed storage using react-native-fs (falls back to in-memory)
 const __mem = new Map<string, string>();
-let AsyncStorage: any = {
-  async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
-  async setItem(key: string, value: string) { __mem.set(key, value); },
-  async removeItem(key: string) { __mem.delete(key); },
-  async multiRemove(keys: string[]) { keys.forEach(k => __mem.delete(k)); },
-  async clear() { __mem.clear(); },
-} as const;
-// Note: do not require '@react-native-async-storage/async-storage' in this build to avoid native crashes
-// Fallback memory storage is used; persistence across restarts is temporary in this debug build
+let Storage: any;
+try {
+  // Lazy require to avoid bundling issues if RNFS missing
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const RNFS = require('react-native-fs');
+  const STORE_PATH = `${RNFS.DocumentDirectoryPath}/finora_store.json`;
+  const readStore = async (): Promise<Record<string, string>> => {
+    try { const s = await RNFS.readFile(STORE_PATH, 'utf8'); return JSON.parse(s || '{}'); } catch { return {}; }
+  };
+  const writeStore = async (obj: Record<string, string>) => {
+    try { await RNFS.writeFile(STORE_PATH, JSON.stringify(obj), 'utf8'); } catch {}
+  };
+  Storage = {
+    async getItem(key: string) { const o = await readStore(); return (o[key] ?? null) as string | null; },
+    async setItem(key: string, value: string) { const o = await readStore(); o[key] = value; await writeStore(o); },
+    async removeItem(key: string) { const o = await readStore(); delete o[key]; await writeStore(o); },
+    async multiRemove(keys: string[]) { const o = await readStore(); keys.forEach(k => delete o[k]); await writeStore(o); },
+    async clear() { await writeStore({}); },
+  };
+} catch {
+  // In-memory fallback
+  Storage = {
+    async getItem(key: string) { return __mem.has(key) ? (__mem.get(key) as string) : null; },
+    async setItem(key: string, value: string) { __mem.set(key, value); },
+    async removeItem(key: string) { __mem.delete(key); },
+    async multiRemove(keys: string[]) { keys.forEach(k => __mem.delete(k)); },
+    async clear() { __mem.clear(); },
+  } as const;
+}
 import {API_BASE_URL} from '../config/constants';
 
 class ApiServiceClass {
@@ -30,7 +50,7 @@ class ApiServiceClass {
     // On app start, restore access token from storage so API calls have auth
     (async () => {
       try {
-        const token = await AsyncStorage.getItem('accessToken');
+        const token = await Storage.getItem('accessToken');
         if (token) this.setAuthToken(token);
       } catch {}
     })();
@@ -60,16 +80,16 @@ class ApiServiceClass {
           originalRequest._retry = true;
 
           try {
-            const refreshToken = await AsyncStorage.getItem('refreshToken');
+            const refreshToken = await Storage.getItem('refreshToken');
             if (refreshToken) {
               const response = await this.post('/auth/refresh', {
                 refreshToken,
               });
-              
+
               const newAccessToken = response.data.accessToken;
-              await AsyncStorage.setItem('accessToken', newAccessToken);
+              await Storage.setItem('accessToken', newAccessToken);
               this.setAuthToken(newAccessToken);
-              
+
               // Retry original request
               originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
               return this.api(originalRequest);
@@ -95,8 +115,8 @@ class ApiServiceClass {
   async setTokens(accessToken: string, refreshToken?: string) {
     this.setAuthToken(accessToken);
     try {
-      await AsyncStorage.setItem('accessToken', accessToken);
-      if (refreshToken) await AsyncStorage.setItem('refreshToken', refreshToken);
+      await Storage.setItem('accessToken', accessToken);
+      if (refreshToken) await Storage.setItem('refreshToken', refreshToken);
     } catch {}
   }
 
@@ -105,7 +125,7 @@ class ApiServiceClass {
   }
 
   async clearTokens() {
-    try { await AsyncStorage.multiRemove(['accessToken','refreshToken']); } catch {}
+    try { await Storage.multiRemove(['accessToken','refreshToken']); } catch {}
     this.clearAuthToken();
   }
 
