@@ -66,6 +66,8 @@ export class UserStock extends BaseModel {
         'stocks.exchange',
         'stocks.sector',
         'stocks.industry',
+        'stock_groups.name as group_name',
+        'stock_groups.color as group_color',
         'sp.price as current_price',
         'sp.change as price_change',
         'sp.change_percent as price_change_percent',
@@ -76,6 +78,7 @@ export class UserStock extends BaseModel {
         'ra.trend_direction'
       )
       .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
+      .leftJoin('stock_groups', 'user_stocks.group_id', 'stock_groups.id')
       .leftJoin('stock_prices as sp', function() {
         this.on('sp.stock_id', '=', 'user_stocks.stock_id')
             .andOn('sp.is_latest', '=', BaseModel.db.raw('?', [true]));

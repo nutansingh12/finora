@@ -427,18 +427,19 @@ export class ImportExportService {
       });
     }
 
-    // Get or create group if specified
+    // Get or create group if specified (support groupName/group headers, case-insensitive)
     let groupId: string | undefined;
-    if (row.groupName && options.createGroups) {
+    const rawGroup = (row.groupName ?? row.group ?? row.Group ?? row.GROUP ?? '').toString().trim();
+    if (rawGroup && options.createGroups) {
       let group = await StockGroup.findOne({
         user_id: userId,
-        name: row.groupName
+        name: rawGroup
       });
 
       if (!group) {
         group = await StockGroup.createGroup({
           user_id: userId,
-          name: row.groupName,
+          name: rawGroup,
           color: this.generateRandomColor()
         });
       }
