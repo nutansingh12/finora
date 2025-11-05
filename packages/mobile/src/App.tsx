@@ -899,14 +899,12 @@ const App: React.FC = () => {
 
 
   // Load user's stocks progressively in pages to avoid long blocking on large lists
+  // Uses last cached prices if backend doesn't have a current price to avoid resetting to 0
   const loadUserStocksFromBackend = async () => {
     try {
       const auth = ApiService.getAuthToken() ?? '';
       const pageSize = 100;
       let offset = 0;
-      let firstPage = true;
-      // Continue fetching until a page smaller than pageSize is returned
-      // Render the first page immediately; append subsequent pages in background
       for (;;) {
         const resp = await fetch(`${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}` as any, {
           headers: {
@@ -919,34 +917,49 @@ const App: React.FC = () => {
           console.error('Failed to load user stocks:', json?.message);
           break;
         }
-        const page = (json.data?.stocks || []).map((s: any) => sanitizeStock({
+        // Build raw page without sanitizing so we can merge with cached values intelligently
+        const rawPage = (json.data?.stocks || []).map((s: any) => ({
           symbol: s.symbol,
           name: s.name || s.symbol,
           exchange: s.exchange || 'Unknown',
           sector: s.sector || 'Unknown',
-          price: Number(s.current_price ?? 0),
-          change: Number(s.price_change ?? 0),
-          changePercent: Number(s.price_change_percent ?? 0),
-          cutoffPrice: Number(s.cutoff_price ?? 0),
-          target: Number(s.target_price ?? s.cutoff_price ?? 0),
+          price: s.current_price != null ? Number(s.current_price) : NaN,
+          change: s.price_change != null ? Number(s.price_change) : NaN,
+          changePercent: s.price_change_percent != null ? Number(s.price_change_percent) : NaN,
+          cutoffPrice: s.cutoff_price != null ? Number(s.cutoff_price) : NaN,
+          target: s.target_price != null ? Number(s.target_price) : (s.cutoff_price != null ? Number(s.cutoff_price) : NaN),
           group: s.group_name || s.group || 'Watchlist',
           alerts: Array.isArray(s.alerts) ? s.alerts : [],
           lastUpdated: new Date().toISOString(),
         }));
-        if (page.length === 0) break;
-        if (firstPage) {
-          setWatchlist(page);
-          firstPage = false;
-        } else {
-          setWatchlist(prev => {
-            const dedupe = new Map<string, any>();
-            [...prev, ...page].forEach((st: any) => dedupe.set(String(st.symbol).toUpperCase(), st));
-            return Array.from(dedupe.values());
+        if (rawPage.length === 0) break;
+        // Merge into existing list, keeping last known prices when backend lacks them
+        setWatchlist(prev => {
+          const prevMap = new Map<string, any>();
+          prev.forEach((p: any) => prevMap.set(String(p.symbol).toUpperCase(), p));
+          const nextMap = new Map<string, any>();
+          rawPage.forEach((n: any) => {
+            const key = String(n.symbol).toUpperCase();
+            const old = prevMap.get(key);
+            const merged: any = { ...(old || {}), ...(n || {}) };
+            if (!Number.isFinite(n.price) || n.price <= 0) merged.price = old?.price ?? 0;
+            if (!Number.isFinite(n.change)) merged.change = old?.change ?? 0;
+            if (!Number.isFinite(n.changePercent)) merged.changePercent = old?.changePercent ?? 0;
+            if (!Number.isFinite(n.cutoffPrice)) merged.cutoffPrice = old?.cutoffPrice ?? 0;
+            if (!Number.isFinite(n.target)) merged.target = old?.target ?? merged.cutoffPrice ?? 0;
+            merged.alerts = Array.isArray(merged.alerts) ? merged.alerts : (old?.alerts ?? []);
+            nextMap.set(key, sanitizeStock(merged));
           });
-        }
-        if (page.length < pageSize) break;
+          // Keep any previous stocks not present in this page
+          prev.forEach((p: any) => {
+            const key = String(p.symbol).toUpperCase();
+            if (!nextMap.has(key)) nextMap.set(key, p);
+          });
+          return Array.from(nextMap.values());
+        });
+        if (rawPage.length < pageSize) break;
         offset += pageSize;
-        // yield to UI to keep it responsive
+        // Yield to UI to keep it responsive
         await new Promise<void>((res) => setTimeout(res, 100));
       }
     } catch (e) {
