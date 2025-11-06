@@ -434,8 +434,16 @@ const App: React.FC = () => {
   const sanitizeStock = (s: any) => ({
     ...s,
     alerts: Array.isArray(s?.alerts) ? s.alerts : [],
-    // Do not coerce price/change fields to 0; preserve last-known values
-    target: Number.isFinite(s?.target) ? s.target : (Number.isFinite(s?.cutoffPrice) ? s.cutoffPrice : 0),
+    // Ensure numeric fields are safe for rendering (avoid toFixed on null/undefined)
+    price: Number.isFinite(Number(s?.price)) ? Number(s.price) : 0,
+    change: Number.isFinite(Number(s?.change)) ? Number(s.change) : 0,
+    changePercent: Number.isFinite(Number(s?.changePercent)) ? Number(s.changePercent) : 0,
+    target: Number.isFinite(Number(s?.target))
+      ? Number(s.target)
+      : (Number.isFinite(Number(s?.cutoffPrice)) ? Number(s.cutoffPrice) : 0),
+    week52Low: Number.isFinite(Number(s?.week52Low)) ? Number(s.week52Low) : s?.week52Low,
+    week24Low: Number.isFinite(Number(s?.week24Low)) ? Number(s.week24Low) : s?.week24Low,
+    week12Low: Number.isFinite(Number(s?.week12Low)) ? Number(s.week12Low) : s?.week12Low,
   });
 
   const loadWatchlistFromStorage = async () => {
