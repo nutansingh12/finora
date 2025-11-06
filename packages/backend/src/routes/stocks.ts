@@ -166,3 +166,11 @@ router.get(
 );
 
 export default router;
+
+// Refresh prices for current user's portfolio (batch)
+router.post(
+  '/prices/refresh',
+  authenticateToken,
+  StockController.refreshUserPrices
+);
+

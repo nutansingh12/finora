@@ -6,10 +6,12 @@ import { StockPrice } from '../models/StockPrice';
 import { RollingAnalysis } from '../models/RollingAnalysis';
 import { AlphaVantageService } from '../services/AlphaVantageService';
 import { StockPriceService } from '../services/StockPriceService';
+import { YahooFinanceIntegrationService } from '../services/YahooFinanceIntegrationService';
 
 export class StockController {
   private static alphaVantageService = new AlphaVantageService();
   private static stockPriceService = new StockPriceService();
+  private static integrationService = new YahooFinanceIntegrationService();
 
   // Get user's stocks
   static async getUserStocks(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
@@ -24,13 +26,20 @@ export class StockController {
         });
       }
 
+      const toBool = (v: any) => {
+        const s = String(v ?? '').toLowerCase();
+        return s === '1' || s === 'true';
+      };
+
       const options = {
         groupId: groupId as string | undefined,
         sortBy: sortBy as string | undefined,
         sortOrder: (sortOrder as 'asc' | 'desc') || 'desc',
         limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined
-      };
+        offset: offset ? parseInt(offset as string) : undefined,
+        onlyWithPrice: toBool(req.query.onlyWithPrice),
+        prioritizeWithPrice: toBool(req.query.prioritizeWithPrice ?? 'true')
+      } as const;
 
       const stocks = await UserStock.getUserStocks(userId, options);
 
@@ -69,7 +78,7 @@ export class StockController {
 
       // Get or create stock
       let stock = await Stock.findBySymbol(symbol.toUpperCase());
-      
+
       if (!stock) {
         // Fetch stock data from Alpha Vantage
         const stockData = await StockController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
@@ -111,6 +120,7 @@ export class StockController {
         notes
       });
 
+
       res.status(201).json({
         success: true,
         message: 'Stock added to portfolio',
@@ -118,7 +128,7 @@ export class StockController {
       });
     } catch (error) {
       console.error('Add user stock error:', error);
-      
+
       if (error instanceof Error && error.message.includes('already exists')) {
         return res.status(409).json({
           success: false,
@@ -182,6 +192,55 @@ export class StockController {
       });
     }
   }
+
+
+  // Refresh current user's missing or stale prices in small batches and persist to DB
+  static async refreshUserPrices(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
+    try {
+      const userId = req.user?.id;
+      const limit = Math.min(parseInt(String((req.query.limit as any) ?? '50'), 10) || 50, 100);
+      const staleMinutes = parseInt(String((req.query.staleMinutes as any) ?? '60'), 10) || 60;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+      // Find symbols for user's stocks that are missing a latest price or are stale
+      const rows = await UserStock.db('user_stocks')
+        .select('user_stocks.stock_id', 'stocks.symbol', 'sp.created_at as last_price_at')
+        .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
+        .leftJoin('stock_prices as sp', function() {
+          this.on('sp.stock_id', '=', 'user_stocks.stock_id')
+              .andOn('sp.is_latest', '=', UserStock.db.raw('?', [true]));
+        })
+        .where('user_stocks.user_id', userId)
+        .where('user_stocks.is_active', true)
+        .where(function() {
+          this.whereNull('sp.price').orWhere('sp.created_at', '<', cutoff);
+        })
+        .limit(limit);
+
+      const symbols = rows.map(r => r.symbol).filter((s: string | null) => !!s) as string[];
+
+      if (symbols.length === 0) {
+        return res.json({ success: true, message: 'No missing or stale prices to refresh', data: { updated: 0, failed: 0, symbols: [] } });
+      }
+
+      const result = await StockController.integrationService.batchUpdateStockPrices(symbols);
+
+      return res.json({
+        success: true,
+        message: 'Batch price refresh complete',
+        data: { updated: result.success.length, failed: result.failed.length, symbols: result.success }
+      });
+    } catch (error) {
+      console.error('Refresh user prices error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
 
   // Remove stock from user's portfolio
   static async removeUserStock(req: AuthenticatedRequest, res: Response): Promise<Response | void> {

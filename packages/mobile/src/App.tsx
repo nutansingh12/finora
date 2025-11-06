@@ -207,8 +207,10 @@ const App: React.FC = () => {
     if (isAuthenticated) {
       // Fire and forget to avoid blocking UI
       loadUserGroups().catch(() => {});
-      // Now that we have auth, load server stocks progressively
-      loadUserStocksFromBackend();
+      // Show priced stocks immediately, then progressively add more as backend fetches prices
+      loadUserStocksFromBackend(true);
+      // Background: ask backend to fetch missing/stale prices and keep adding newly priced stocks
+      refreshMissingPricesLoop().catch(() => {});
     }
   }, [isAuthenticated]);
 
@@ -606,7 +608,9 @@ const App: React.FC = () => {
       // @ts-ignore runtime check
       console.log('[Finora] Methods:', PortfolioService && Object.keys(PortfolioService) || 'undefined');
       const result = await PortfolioService.pickAndImportCSV();
-      await loadUserStocksFromBackend();
+      // Show priced stocks first, then progressively add more as backend fetches prices
+      await loadUserStocksFromBackend(true);
+      refreshMissingPricesLoop().catch(() => {});
       Alert.alert('Import Complete', `Imported ${result.successfulImports}/${result.totalRows}`);
     } catch (e: any) {
       if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
@@ -899,14 +903,16 @@ const App: React.FC = () => {
 
 
   // Load user's stocks progressively in pages to avoid long blocking on large lists
-  // Uses last cached prices if backend doesn't have a current price to avoid resetting to 0
-  const loadUserStocksFromBackend = async () => {
+  // When pricedOnly is true, fetch only stocks that already have prices from the backend,
+  // and accumulate them across pages. Uses last cached prices if backend lacks a current quote.
+  const loadUserStocksFromBackend = async (pricedOnly: boolean = false) => {
     try {
       const auth = ApiService.getAuthToken() ?? '';
       const pageSize = 100;
       let offset = 0;
       for (;;) {
-        const resp = await fetch(`${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}` as any, {
+        const url = `${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}` + (pricedOnly ? `&onlyWithPrice=true` : '');
+        const resp = await fetch(url as any, {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${auth}`
@@ -950,10 +956,14 @@ const App: React.FC = () => {
             merged.alerts = Array.isArray(merged.alerts) ? merged.alerts : (old?.alerts ?? []);
             nextMap.set(key, sanitizeStock(merged));
           });
-          // Keep any previous stocks not present in this page
+          // Keep previous items across pages; when pricedOnly, keep only those with a price > 0
           prev.forEach((p: any) => {
             const key = String(p.symbol).toUpperCase();
-            if (!nextMap.has(key)) nextMap.set(key, p);
+            if (!nextMap.has(key)) {
+              if (!pricedOnly || (Number.isFinite(p?.price) && p.price > 0)) {
+                nextMap.set(key, p);
+              }
+            }
           });
           return Array.from(nextMap.values());
         });
@@ -964,6 +974,39 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error('Error loading user stocks:', e);
+    }
+  };
+
+
+  // Background: ask backend to fetch and persist missing/stale prices in small batches,
+  // and after each successful batch, reload priced stocks to progressively add to the list
+  const refreshMissingPricesLoop = async (maxRounds: number = 8, batchLimit: number = 50) => {
+    try {
+      const auth = ApiService.getAuthToken() ?? '';
+      for (let round = 0; round < maxRounds; round++) {
+        const resp = await fetch(`${API_BASE_URL}/stocks/prices/refresh?limit=${batchLimit}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${auth}`
+          }
+        });
+        const json = await resp.json();
+        if (!(resp.ok && json?.success)) {
+          console.warn('[Finora] refresh prices error:', json?.message || resp.statusText);
+          break;
+        }
+        const updated = Number(json?.data?.updated || 0);
+        if (updated > 0) {
+          // Pull in newly priced stocks without showing unpriced ones
+          await loadUserStocksFromBackend(true);
+        }
+        if (updated === 0) break;
+        // small delay between batches to avoid hammering data providers
+        await new Promise<void>((res) => setTimeout(res, 1500));
+      }
+    } catch (e) {
+      console.warn('[Finora] refreshMissingPricesLoop failed:', e);
     }
   };
 
