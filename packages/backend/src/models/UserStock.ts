@@ -60,6 +60,11 @@ export class UserStock extends BaseModel {
     currentPrice?: any;
     analysis?: any;
   }>> {
+    // Be tolerant to legacy DBs that may not have is_active on user_stocks
+    const hasUserStocksIsActive = await this.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false);
+
+    const hasRollingAnalysis = await this.db.schema.hasTable('rolling_analysis').catch(() => false);
+
     let query = this.db(this.tableName)
       .select(
         'user_stocks.*',
@@ -76,25 +81,38 @@ export class UserStock extends BaseModel {
         'sp.volume as volume',
         'sp.market_cap as market_cap',
         'sp.fifty_two_week_low as sp_week_52_low',
-        'sp.fifty_two_week_high as sp_week_52_high',
-        'ra.week_52_low',
-        'ra.week_24_low',
-        'ra.week_12_low',
-        'ra.percent_above_52w_low',
-        'ra.percent_above_24w_low',
-        'ra.percent_above_12w_low',
-        'ra.volatility',
-        'ra.trend_direction'
+        'sp.fifty_two_week_high as sp_week_52_high'
       )
+      .modify((qb: any) => {
+        if (hasRollingAnalysis) {
+          qb.select(
+            'ra.week_52_low',
+            'ra.week_24_low',
+            'ra.week_12_low',
+            'ra.percent_above_52w_low',
+            'ra.percent_above_24w_low',
+            'ra.percent_above_12w_low',
+            'ra.volatility',
+            'ra.trend_direction'
+          );
+        }
+      })
       .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
       .leftJoin('stock_groups', 'user_stocks.group_id', 'stock_groups.id')
       .leftJoin('stock_prices as sp', function() {
         this.on('sp.stock_id', '=', 'user_stocks.stock_id')
             .andOn('sp.is_latest', '=', BaseModel.db.raw('?', [true]));
       })
-      .leftJoin('rolling_analysis as ra', 'ra.stock_id', 'user_stocks.stock_id')
-      .where('user_stocks.user_id', userId)
-      .where('user_stocks.is_active', true);
+      .modify((qb: any) => {
+        if (hasRollingAnalysis) {
+          qb.leftJoin('rolling_analysis as ra', 'ra.stock_id', 'user_stocks.stock_id');
+        }
+      })
+      .where('user_stocks.user_id', userId);
+
+    if (hasUserStocksIsActive) {
+      query = query.where('user_stocks.is_active', true);
+    }
 
     if (options.groupId) {
       query = query.where('user_stocks.group_id', options.groupId);

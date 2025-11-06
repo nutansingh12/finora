@@ -208,7 +208,9 @@ export class StockController {
       const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
 
       // Find symbols for user's stocks that are missing a latest price or are stale
-      const rows = await UserStock.db('user_stocks')
+      const hasUserStocksIsActive = await UserStock.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false);
+
+      let baseQuery = UserStock.db('user_stocks')
         .select('user_stocks.stock_id', 'stocks.symbol', 'sp.created_at as last_price_at')
         .leftJoin('stocks', 'user_stocks.stock_id', 'stocks.id')
         .leftJoin('stock_prices as sp', function() {
@@ -216,11 +218,16 @@ export class StockController {
               .andOn('sp.is_latest', '=', UserStock.db.raw('?', [true]));
         })
         .where('user_stocks.user_id', userId)
-        .where('user_stocks.is_active', true)
         .where(function() {
           this.whereNull('sp.price').orWhere('sp.created_at', '<', cutoff);
         })
         .limit(limit);
+
+      if (hasUserStocksIsActive) {
+        baseQuery = baseQuery.where('user_stocks.is_active', true);
+      }
+
+      const rows = await baseQuery;
 
       const symbols = rows.map(r => r.symbol).filter((s: string | null) => !!s) as string[];
 
