@@ -52,6 +52,8 @@ export class UserStock extends BaseModel {
       sortOrder?: 'asc' | 'desc';
       limit?: number;
       offset?: number;
+      onlyWithPrice?: boolean;
+      prioritizeWithPrice?: boolean;
     } = {}
   ): Promise<Array<UserStockModel & {
     stock: any;
@@ -71,6 +73,13 @@ export class UserStock extends BaseModel {
         'sp.price as current_price',
         'sp.change as price_change',
         'sp.change_percent as price_change_percent',
+        'sp.volume as volume',
+        'sp.market_cap as market_cap',
+        'sp.fifty_two_week_low as sp_week_52_low',
+        'sp.fifty_two_week_high as sp_week_52_high',
+        'ra.week_52_low',
+        'ra.week_24_low',
+        'ra.week_12_low',
         'ra.percent_above_52w_low',
         'ra.percent_above_24w_low',
         'ra.percent_above_12w_low',
@@ -91,7 +100,16 @@ export class UserStock extends BaseModel {
       query = query.where('user_stocks.group_id', options.groupId);
     }
 
-    // Sorting
+    if (options.onlyWithPrice) {
+      query = query.whereNotNull('sp.price');
+    }
+
+    // If requested, prioritize rows that have a current price
+    if (options.prioritizeWithPrice) {
+      query = query.orderByRaw('CASE WHEN sp.price IS NULL THEN 1 ELSE 0 END ASC');
+    }
+
+    // Sorting (secondary)
     const sortBy = options.sortBy || 'added_at';
     const sortOrder = options.sortOrder || 'desc';
 

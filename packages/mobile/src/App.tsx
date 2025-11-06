@@ -175,6 +175,8 @@ const App: React.FC = () => {
   const [editTargetPrice, setEditTargetPrice] = useState('');
   const [editGroup, setEditGroup] = useState('Watchlist');
   const [showEditModal, setShowEditModal] = useState(false);
+  const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
+
 
   // Initialize app and check for stored authentication
   React.useEffect(() => {
@@ -310,10 +312,12 @@ const App: React.FC = () => {
     );
   };
 
-  // Function to refresh stock prices by reloading from backend
+  // Function to refresh stock prices without wiping cached values
   const refreshStockData = async () => {
     try {
-      await loadUserStocksFromBackend();
+      // Show priced stocks first and progressively add more
+      await loadUserStocksFromBackend(true);
+      await refreshMissingPricesLoop(12, 50);
     } catch (e) {
       console.error('Failed to refresh stock data from backend:', e);
     }
@@ -323,6 +327,38 @@ const App: React.FC = () => {
   const handleCloseChart = () => {
     setShowChartModal(false);
     setSelectedChartStock(null);
+  };
+
+  // Save notes to backend and update local state
+  const saveStockNotes = async (symbol: string, notes: string) => {
+    try {
+      await ApiService.post('/watchlist', { watchlist: [{ symbol, notes }] });
+      setWatchlist(prev => prev.map(s => s.symbol === symbol ? { ...s, notes } : s));
+    } catch (e) {
+      console.warn('Save notes failed', e);
+      Alert.alert('Save failed', 'Could not save note. It will remain locally.');
+    }
+  };
+
+  const formatMoney = (n: any) => {
+    const v = Number(n);
+    if (!Number.isFinite(v) || v <= 0) return '-';
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(v);
+    } catch {
+      return `$${v.toFixed(2)}`;
+    }
+  };
+
+  const formatCompact = (n: any) => {
+    const v = Number(n);
+    if (!Number.isFinite(v) || v <= 0) return '-';
+    try {
+      // Some RN TS types don't include notation; it's supported at runtime.
+      return (Intl as any).NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v);
+    } catch {
+      return String(v);
+    }
   };
 
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
@@ -398,13 +434,8 @@ const App: React.FC = () => {
   const sanitizeStock = (s: any) => ({
     ...s,
     alerts: Array.isArray(s?.alerts) ? s.alerts : [],
-    price: Number.isFinite(s?.price) ? s.price : 0,
-    change: Number.isFinite(s?.change) ? s.change : 0,
-    changePercent: Number.isFinite(s?.changePercent) ? s.changePercent : 0,
+    // Do not coerce price/change fields to 0; preserve last-known values
     target: Number.isFinite(s?.target) ? s.target : (Number.isFinite(s?.cutoffPrice) ? s.cutoffPrice : 0),
-    week52Low: Number.isFinite(s?.week52Low) ? s.week52Low : (Number.isFinite(s?.low52Week) ? s.low52Week : 0),
-    week24Low: Number.isFinite(s?.week24Low) ? s.week24Low : (Number.isFinite(s?.low24Week) ? s.low24Week : 0),
-    week12Low: Number.isFinite(s?.week12Low) ? s.week12Low : (Number.isFinite(s?.low12Week) ? s.low12Week : 0),
   });
 
   const loadWatchlistFromStorage = async () => {
@@ -936,6 +967,12 @@ const App: React.FC = () => {
           target: s.target_price != null ? Number(s.target_price) : (s.cutoff_price != null ? Number(s.cutoff_price) : NaN),
           group: s.group_name || s.group || 'Watchlist',
           alerts: Array.isArray(s.alerts) ? s.alerts : [],
+          week52Low: s.week_52_low != null ? Number(s.week_52_low) : (s.sp_week_52_low != null ? Number(s.sp_week_52_low) : NaN),
+          week24Low: s.week_24_low != null ? Number(s.week_24_low) : NaN,
+          week12Low: s.week_12_low != null ? Number(s.week_12_low) : NaN,
+          volume: s.volume != null ? formatCompact(Number(s.volume)) : '',
+          marketCap: s.market_cap != null ? formatMoney(Number(s.market_cap)) : '',
+          notes: typeof s.notes === 'string' ? s.notes : '',
           lastUpdated: new Date().toISOString(),
         }));
         if (rawPage.length === 0) break;
@@ -948,11 +985,17 @@ const App: React.FC = () => {
             const key = String(n.symbol).toUpperCase();
             const old = prevMap.get(key);
             const merged: any = { ...(old || {}), ...(n || {}) };
-            if (!Number.isFinite(n.price) || n.price <= 0) merged.price = old?.price ?? 0;
-            if (!Number.isFinite(n.change)) merged.change = old?.change ?? 0;
-            if (!Number.isFinite(n.changePercent)) merged.changePercent = old?.changePercent ?? 0;
-            if (!Number.isFinite(n.cutoffPrice)) merged.cutoffPrice = old?.cutoffPrice ?? 0;
-            if (!Number.isFinite(n.target)) merged.target = old?.target ?? merged.cutoffPrice ?? 0;
+            if (!Number.isFinite(n.price) || n.price <= 0) merged.price = old?.price ?? merged.price;
+            if (!Number.isFinite(n.change)) merged.change = old?.change ?? merged.change;
+            if (!Number.isFinite(n.changePercent)) merged.changePercent = old?.changePercent ?? merged.changePercent;
+            if (!Number.isFinite(n.cutoffPrice)) merged.cutoffPrice = old?.cutoffPrice ?? merged.cutoffPrice;
+            if (!Number.isFinite(n.target)) merged.target = old?.target ?? merged.cutoffPrice ?? merged.target;
+            if (!Number.isFinite(n.week52Low)) merged.week52Low = old?.week52Low ?? merged.week52Low;
+            if (!Number.isFinite(n.week24Low)) merged.week24Low = old?.week24Low ?? merged.week24Low;
+            if (!Number.isFinite(n.week12Low)) merged.week12Low = old?.week12Low ?? merged.week12Low;
+            if (!merged.volume) merged.volume = old?.volume ?? merged.volume;
+            if (!merged.marketCap) merged.marketCap = old?.marketCap ?? merged.marketCap;
+            if (typeof n.notes !== 'string') merged.notes = old?.notes ?? merged.notes ?? '';
             merged.alerts = Array.isArray(merged.alerts) ? merged.alerts : (old?.alerts ?? []);
             nextMap.set(key, sanitizeStock(merged));
           });
@@ -980,11 +1023,11 @@ const App: React.FC = () => {
 
   // Background: ask backend to fetch and persist missing/stale prices in small batches,
   // and after each successful batch, reload priced stocks to progressively add to the list
-  const refreshMissingPricesLoop = async (maxRounds: number = 8, batchLimit: number = 50) => {
+  const refreshMissingPricesLoop = async (maxRounds: number = 12, batchLimit: number = 50) => {
     try {
       const auth = ApiService.getAuthToken() ?? '';
       for (let round = 0; round < maxRounds; round++) {
-        const resp = await fetch(`${API_BASE_URL}/stocks/prices/refresh?limit=${batchLimit}`, {
+        const resp = await fetch(`${API_BASE_URL}/stocks/prices/refresh?limit=${batchLimit}&staleMinutes=2`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1568,8 +1611,8 @@ const App: React.FC = () => {
         targetPrice: cutoffValue,
       });
 
-      // Reload from backend to ensure live data
-      await loadUserStocksFromBackend();
+      // Reload priced stocks from backend; progressive loop will fill the rest
+      await loadUserStocksFromBackend(true);
 
       Alert.alert('Success', `${selectedStock.symbol} added to watchlist!`);
     } catch (err: any) {
@@ -2010,23 +2053,37 @@ const App: React.FC = () => {
               <View style={styles.metricsGrid}>
                 <View style={styles.metricItem}>
                   <Text style={styles.metricLabel}>52W Low</Text>
-                  <Text style={styles.metricValue}>+{calculateDistance(stock.price, stock.week52Low).toFixed(1)}%</Text>
+                  <Text style={styles.metricValue}>{Number.isFinite(stock.week52Low) ? formatMoney(stock.week52Low) : '-'}</Text>
                 </View>
                 <View style={styles.metricItem}>
                   <Text style={styles.metricLabel}>24W Low</Text>
-                  <Text style={styles.metricValue}>+{calculateDistance(stock.price, stock.week24Low).toFixed(1)}%</Text>
+                  <Text style={styles.metricValue}>{Number.isFinite(stock.week24Low) ? formatMoney(stock.week24Low) : '-'}</Text>
                 </View>
                 <View style={styles.metricItem}>
                   <Text style={styles.metricLabel}>12W Low</Text>
-                  <Text style={styles.metricValue}>+{calculateDistance(stock.price, stock.week12Low).toFixed(1)}%</Text>
+                  <Text style={styles.metricValue}>{Number.isFinite(stock.week12Low) ? formatMoney(stock.week12Low) : '-'}</Text>
                 </View>
               </View>
 
               <View style={styles.stockFooter}>
                 <View style={styles.footerInfo}>
-                  <Text style={styles.footerText}>Volume: {stock.volume}</Text>
-                  <Text style={styles.footerText}>Cap: {stock.marketCap}</Text>
-                  <Text style={styles.footerText} numberOfLines={1} ellipsizeMode='tail'>Notes: {(stock.notes || '').trim() || '-'}</Text>
+                  <Text style={styles.footerText}>Vol: {stock.volume || '-'}</Text>
+                  <Text style={styles.footerText}>Cap: {stock.marketCap || '-'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 80 }}>
+                    <Text style={[styles.footerText, { marginRight: 6 }]}>Notes:</Text>
+                    <TextInput
+                      style={[styles.footerText, { flex: 1, paddingVertical: 0 }]}
+                      placeholder="Add note"
+                      placeholderTextColor="#777"
+                      value={notesDraft[stock.symbol] ?? (stock.notes || '')}
+                      onChangeText={(t) => setNotesDraft(prev => ({ ...prev, [stock.symbol]: t }))}
+                      onBlur={() => {
+                        const next = (notesDraft[stock.symbol] ?? (stock.notes || '')).trim();
+                        if (next !== (stock.notes || '')) saveStockNotes(stock.symbol, next);
+                      }}
+                      numberOfLines={1}
+                    />
+                  </View>
                 </View>
                 <TouchableOpacity
                   style={styles.editButton}

@@ -199,7 +199,7 @@ export class StockController {
     try {
       const userId = req.user?.id;
       const limit = Math.min(parseInt(String((req.query.limit as any) ?? '50'), 10) || 50, 100);
-      const staleMinutes = parseInt(String((req.query.staleMinutes as any) ?? '60'), 10) || 60;
+      const staleMinutes = parseInt(String((req.query.staleMinutes as any) ?? '2'), 10) || 2;
 
       if (!userId) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
