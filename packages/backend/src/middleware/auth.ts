@@ -15,7 +15,7 @@ export const authenticateToken = async (
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      throw new CustomError('Access token required', 401);
+      return next(new CustomError('Access token required', 401));
     }
 
     const decoded = jwt.verify(token, config.jwt.secret) as any;
@@ -24,7 +24,7 @@ export const authenticateToken = async (
     const user = await User.findById(decoded.userId);
 
     if (!user || !user.is_active) {
-      throw new CustomError('Invalid or expired token', 401);
+      return next(new CustomError('Invalid or expired token', 401));
     }
 
     req.user = {
@@ -34,14 +34,14 @@ export const authenticateToken = async (
       lastName: user.last_name
     };
 
-    next();
+    return next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      throw new CustomError('Invalid token', 401);
+      return next(new CustomError('Invalid token', 401));
     } else if (error instanceof jwt.TokenExpiredError) {
-      throw new CustomError('Token expired', 401);
+      return next(new CustomError('Token expired', 401));
     }
-    throw error;
+    return next(error as any);
   }
 };
 
