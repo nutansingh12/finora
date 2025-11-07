@@ -207,12 +207,24 @@ const App: React.FC = () => {
   // Load groups when user becomes authenticated
   React.useEffect(() => {
     if (isAuthenticated) {
-      // Fire and forget to avoid blocking UI
-      loadUserGroups().catch(() => {});
-      // Show priced stocks immediately, then progressively add more as backend fetches prices
-      loadUserStocksFromBackend(true);
-      // Background: ask backend to fetch missing/stale prices and keep adding newly priced stocks
-      refreshMissingPricesLoop().catch(() => {});
+      (async () => {
+        try {
+          // Load groups without blocking UI
+          loadUserGroups().catch(() => {});
+          // Try priced-only first; if none returned, fall back to full list
+          const pricedCount = await loadUserStocksFromBackend(true);
+          let allCount = 0;
+          if (!pricedCount) {
+            allCount = await loadUserStocksFromBackend(false);
+          }
+          // If server returned nothing but we have local data, restore it to cloud and reload
+          if (!pricedCount && !allCount) {
+            await restoreCloudFromLocalIfEmpty();
+          }
+          // Background: ask backend to fetch missing/stale prices and keep adding newly priced stocks
+          refreshMissingPricesLoop().catch(() => {});
+        } catch {}
+      })();
     }
   }, [isAuthenticated]);
 
@@ -422,6 +434,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Avoid overwriting persisted data with an empty list on startup
+    if (!Array.isArray(watchlist) || watchlist.length === 0) return;
     saveWatchlistToStorage();
   }, [watchlist]);
 
@@ -460,6 +474,8 @@ const App: React.FC = () => {
 
   const saveWatchlistToStorage = async () => {
     try {
+      // Do not persist empty lists to avoid erasing prior data
+      if (!Array.isArray(watchlist) || watchlist.length === 0) return;
       await SafeStorage.setItem('finora_watchlist', JSON.stringify(watchlist));
       // In production, also sync to cloud database here
       await syncToCloudDatabase(watchlist);
@@ -531,15 +547,16 @@ const App: React.FC = () => {
 
 
 
-  const syncToCloudDatabase = async (data: any[], attempt: number = 0): Promise<boolean> => {
+  const syncToCloudDatabase = async (data: any[], attempt: number = 0, replaceFlag: boolean = false): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/watchlist`, {
+      const qs = replaceFlag ? '?replace=true' : '';
+      const response = await fetch(`${API_BASE_URL}/watchlist${qs}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${ApiService.getAuthToken() ?? ''}`
         },
-        body: JSON.stringify({ watchlist: data })
+        body: JSON.stringify({ watchlist: data, ...(replaceFlag ? { replace: true } : {}) })
       });
 
       if (!response.ok) {
@@ -550,10 +567,36 @@ const App: React.FC = () => {
       if (attempt < 3) {
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise<void>((resolve) => setTimeout(resolve, delay));
-        return syncToCloudDatabase(data, attempt + 1);
+        return syncToCloudDatabase(data, attempt + 1, replaceFlag);
       }
       console.warn('Cloud sync failed after retries; data saved locally');
       return false;
+    }
+  };
+
+  // If server returns no stocks but local watchlist exists, push it to cloud and reload
+  const restoreCloudFromLocalIfEmpty = async (): Promise<void> => {
+    try {
+      const local = Array.isArray(watchlist) ? watchlist : [];
+      let payload = local;
+      if (!local.length) {
+        const saved = await SafeStorage.getItem('finora_watchlist');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length) payload = parsed;
+          } catch {}
+        }
+      }
+      if (!payload.length) return; // nothing to restore
+      console.log('[Finora] Restoring watchlist to cloud… items:', payload.length);
+      const ok = await syncToCloudDatabase(payload, 0, true);
+      if (ok) {
+        // After restoring, reload priced stocks first for quick UI fill
+        await loadUserStocksFromBackend(true);
+      }
+    } catch (e) {
+      console.warn('Restore cloud from local failed:', e);
     }
   };
 
@@ -945,6 +988,7 @@ const App: React.FC = () => {
   // When pricedOnly is true, fetch only stocks that already have prices from the backend,
   // and accumulate them across pages. Uses last cached prices if backend lacks a current quote.
   const loadUserStocksFromBackend = async (pricedOnly: boolean = false) => {
+    let fetchedCount = 0;
     try {
       const auth = ApiService.getAuthToken() ?? '';
       const pageSize = 100;
@@ -957,9 +1001,15 @@ const App: React.FC = () => {
             'Authorization': `Bearer ${auth}`
           }
         });
+        if (resp.status === 401) {
+          console.warn('Session expired while fetching stocks; redirecting to login');
+          setIsAuthenticated(false);
+          Alert.alert('Session expired', 'Please log in again.');
+          break;
+        }
         const json = await resp.json();
         if (!(resp.ok && json.success)) {
-          console.error('Failed to load user stocks:', json?.message);
+          console.error('Failed to load user stocks:', json?.message || resp.statusText);
           break;
         }
         // Build raw page without sanitizing so we can merge with cached values intelligently
@@ -984,6 +1034,7 @@ const App: React.FC = () => {
           lastUpdated: new Date().toISOString(),
         }));
         if (rawPage.length === 0) break;
+        fetchedCount += rawPage.length;
         // Merge into existing list, keeping last known prices when backend lacks them
         setWatchlist(prev => {
           const prevMap = new Map<string, any>();
@@ -1026,6 +1077,7 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('Error loading user stocks:', e);
     }
+    return fetchedCount;
   };
 
 
