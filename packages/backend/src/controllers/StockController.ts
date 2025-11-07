@@ -208,7 +208,7 @@ export class StockController {
       const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
 
       // Find symbols for user's stocks that are missing a latest price or are stale
-      const hasUserStocksIsActive = await UserStock.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false);
+      const hasUserStocksIsActive = await UserStock.hasIsActiveColumn();
 
       let baseQuery = UserStock.db('user_stocks')
         .select('user_stocks.stock_id', 'stocks.symbol', 'sp.created_at as last_price_at')

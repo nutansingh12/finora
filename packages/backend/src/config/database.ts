@@ -14,17 +14,29 @@ const connection: any = useUrl
       ssl: config.database.ssl ? { rejectUnauthorized: false } : false,
     };
 
+const isServerless = process.env.VERCEL === '1';
+const pool = isServerless
+  ? {
+      min: 0,
+      max: 1,
+      acquireTimeoutMillis: 5000,
+      createTimeoutMillis: 5000,
+      destroyTimeoutMillis: 1000,
+      idleTimeoutMillis: 2000,
+    }
+  : {
+      min: 2,
+      max: 10,
+      acquireTimeoutMillis: 60000,
+      createTimeoutMillis: 30000,
+      destroyTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    };
+
 const knexConfig = {
   client: 'postgresql',
   connection,
-  pool: {
-    min: 2,
-    max: 10,
-    acquireTimeoutMillis: 60000,
-    createTimeoutMillis: 30000,
-    destroyTimeoutMillis: 5000,
-    idleTimeoutMillis: 30000,
-  },
+  pool,
   migrations: {
     directory: './src/database/migrations',
     tableName: 'knex_migrations',

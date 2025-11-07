@@ -95,8 +95,8 @@ class ApiServiceClass {
               return this.api(originalRequest);
             }
           } catch (refreshError) {
-            // Refresh failed, redirect to login
-            await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+            // Refresh failed, clear stored tokens using our storage layer
+            try { await Storage.multiRemove(['accessToken', 'refreshToken']); } catch {}
             this.clearAuthToken();
             // You might want to emit an event here to trigger logout in the app
             return Promise.reject(refreshError);

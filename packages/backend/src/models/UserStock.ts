@@ -16,6 +16,29 @@ export interface UserStockModel {
 export class UserStock extends BaseModel {
   protected static tableName = 'user_stocks';
 
+  // Cache schema checks per warm instance (avoid slow hasTable/hasColumn on every request)
+  private static _hasUserStocksIsActive?: boolean;
+  private static _hasRollingAnalysis?: boolean;
+
+  private static async ensureSchema(): Promise<void> {
+    if (this._hasUserStocksIsActive === undefined || this._hasRollingAnalysis === undefined) {
+      try {
+        const [hasActive, hasRA] = await Promise.all([
+          this.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false),
+          this.db.schema.hasTable('rolling_analysis').catch(() => false),
+        ]);
+        this._hasUserStocksIsActive = !!hasActive;
+        this._hasRollingAnalysis = !!hasRA;
+      } catch {
+        this._hasUserStocksIsActive = false;
+        this._hasRollingAnalysis = false;
+      }
+    }
+  }
+
+  static async hasIsActiveColumn(): Promise<boolean> { await this.ensureSchema(); return !!this._hasUserStocksIsActive; }
+  static async hasRollingAnalysisTable(): Promise<boolean> { await this.ensureSchema(); return !!this._hasRollingAnalysis; }
+
   // Add stock to user's portfolio
   static async addUserStock(data: {
     user_id: string;
@@ -60,10 +83,10 @@ export class UserStock extends BaseModel {
     currentPrice?: any;
     analysis?: any;
   }>> {
-    // Be tolerant to legacy DBs that may not have is_active on user_stocks
-    const hasUserStocksIsActive = await this.db.schema.hasColumn('user_stocks', 'is_active').catch(() => false);
-
-    const hasRollingAnalysis = await this.db.schema.hasTable('rolling_analysis').catch(() => false);
+    // Be tolerant to legacy DBs that may not have is_active on user_stocks; cache schema checks per instance
+    await this.ensureSchema();
+    const hasUserStocksIsActive = !!this._hasUserStocksIsActive;
+    const hasRollingAnalysis = !!this._hasRollingAnalysis;
 
     let query = this.db(this.tableName)
       .select(
@@ -158,7 +181,9 @@ export class UserStock extends BaseModel {
       query = query.offset(options.offset);
     }
 
-    return query;
+    // Apply a conservative per-request timeout to avoid hanging serverless invocations
+    // (Knex will attempt to cancel the query if supported by the driver)
+    return query.timeout(8000);
   }
 
   // Update user stock
