@@ -102,9 +102,7 @@ export class UserStock extends BaseModel {
         'sp.change as price_change',
         'sp.change_percent as price_change_percent',
         'sp.volume as volume',
-        'sp.market_cap as market_cap',
-        'sp.fifty_two_week_low as sp_week_52_low',
-        'sp.fifty_two_week_high as sp_week_52_high'
+        'sp.market_cap as market_cap'
       )
       .modify((qb: any) => {
         if (hasRollingAnalysis) {
