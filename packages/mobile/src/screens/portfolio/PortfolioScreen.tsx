@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, StyleSheet, ScrollView, RefreshControl, Alert} from 'react-native';
+import {View, StyleSheet, ScrollView, Alert} from 'react-native';
 import {
   Text,
   Card,
@@ -68,106 +68,146 @@ export const PortfolioScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={[styles.container, {backgroundColor: theme.colors.background}]}>
-      <ScrollView
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }>
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View style={{flex: 1}}>
-              <Text style={[styles.title, {color: theme.colors.text}]}>Portfolio</Text>
-              <Text style={[styles.subtitle, {color: theme.colors.text}]}>Welcome back, {user?.firstName}</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <IconButton
-                icon="download"
-                size={20}
-                onPress={async () => {
-                  try {
-                    const {savedPath} = await PortfolioService.exportCSV();
-                    setSnackbar({visible: true, message: `Exported to\n${savedPath}`});
-                  } catch (e: any) {
-                    setSnackbar({visible: true, message: e?.message || 'Export failed'});
-                  }
-                }}
-              />
-              <IconButton
-                icon="folder"
-                size={20}
-                onPress={async () => {
-                  try {
-                    const result = await PortfolioService.pickAndImportCSV();
-                    setSnackbar({visible: true, message: `Imported ${result.successfulImports}/${result.totalRows}`});
-                    await loadPortfolio();
-                  } catch (e: any) {
-                    if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
-                    setSnackbar({visible: true, message: e?.message || 'Import failed'});
-                  }
-                }}
-              />
-            </View>
-          </View>
-          <View style={{marginTop: 6}}>
-            <Text style={styles.importHint}>
-              Tip: Select a .csv from Downloads. If files appear greyed out, open the Files app and pick the CSV.
-            </Text>
-          </View>
-        </View>
+      {portfolio && portfolio.stocks?.length > 0 ? (
+        <StockList
+          stocks={portfolio.stocks}
+          selectedGroup={selectedGroup}
+          onStockPress={handleStockPress}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          ListHeaderComponent={(
+            <View>
+              <View style={styles.header}>
+                <View style={styles.headerRow}>
+                  <View style={{flex: 1}}>
+                    <Text style={[styles.title, {color: theme.colors.text}]}>Portfolio</Text>
+                    <Text style={[styles.subtitle, {color: theme.colors.text}]}>Welcome back, {user?.firstName}</Text>
+                  </View>
+                  <View style={styles.headerActions}>
+                    <IconButton
+                      icon="download"
+                      size={20}
+                      onPress={async () => {
+                        try {
+                          const {savedPath} = await PortfolioService.exportCSV();
+                          setSnackbar({visible: true, message: `Exported to\n${savedPath}`});
+                        } catch (e: any) {
+                          setSnackbar({visible: true, message: e?.message || 'Export failed'});
+                        }
+                      }}
+                    />
+                    <IconButton
+                      icon="folder"
+                      size={20}
+                      onPress={async () => {
+                        try {
+                          const result = await PortfolioService.pickAndImportCSV();
+                          setSnackbar({visible: true, message: `Imported ${result.successfulImports}/${result.totalRows}`});
+                          await loadPortfolio();
+                        } catch (e: any) {
+                          if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
+                          setSnackbar({visible: true, message: e?.message || 'Import failed'});
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+                <View style={{marginTop: 6}}>
+                  <Text style={styles.importHint}>
+                    Tip: Select a .csv from Downloads. If files appear greyed out, open the Files app and pick the CSV.
+                  </Text>
+                </View>
+              </View>
 
-        {portfolio && (
-          <>
-            <PortfolioSummary
-              totalValue={portfolio.totalValue}
-              totalGain={portfolio.totalGain}
-              totalGainPercent={portfolio.totalGainPercent}
-              dayGain={portfolio.dayGain}
-              dayGainPercent={portfolio.dayGainPercent}
-            />
+              <PortfolioSummary
+                totalValue={portfolio.totalValue}
+                totalGain={portfolio.totalGain}
+                totalGainPercent={portfolio.totalGainPercent}
+                dayGain={portfolio.dayGain}
+                dayGainPercent={portfolio.dayGainPercent}
+              />
 
-            <View style={styles.groupsContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Chip
-                  selected={selectedGroup === 'all'}
-                  onPress={() => setSelectedGroup('all')}
-                  style={styles.groupChip}
-                  textStyle={styles.groupChipText}
-                >
-                  All Stocks
-                </Chip>
-                {portfolio.groups?.map((group: any) => (
+              <View style={styles.groupsContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <Chip
-                    key={group.id}
-                    selected={selectedGroup === group.id}
-                    onPress={() => setSelectedGroup(group.id)}
+                    selected={selectedGroup === 'all'}
+                    onPress={() => setSelectedGroup('all')}
                     style={styles.groupChip}
                     textStyle={styles.groupChipText}
                   >
-                    {group.name}
+                    All Stocks
                   </Chip>
-                ))}
-              </ScrollView>
+                  {portfolio.groups?.map((group: any) => (
+                    <Chip
+                      key={group.id}
+                      selected={selectedGroup === group.id}
+                      onPress={() => setSelectedGroup(group.id)}
+                      style={styles.groupChip}
+                      textStyle={styles.groupChipText}
+                    >
+                      {group.name}
+                    </Chip>
+                  ))}
+                </ScrollView>
+              </View>
             </View>
+          )}
+        />
+      ) : (
+        <View>
+          {/* Header with actions remains visible even if empty */}
+          <View style={styles.header}>
+            <View style={styles.headerRow}>
+              <View style={{flex: 1}}>
+                <Text style={[styles.title, {color: theme.colors.text}]}>Portfolio</Text>
+                <Text style={[styles.subtitle, {color: theme.colors.text}]}>Welcome back, {user?.firstName}</Text>
+              </View>
+              <View style={styles.headerActions}>
+                <IconButton
+                  icon="download"
+                  size={20}
+                  onPress={async () => {
+                    try {
+                      const {savedPath} = await PortfolioService.exportCSV();
+                      setSnackbar({visible: true, message: `Exported to\n${savedPath}`});
+                    } catch (e: any) {
+                      setSnackbar({visible: true, message: e?.message || 'Export failed'});
+                    }
+                  }}
+                />
+                <IconButton
+                  icon="folder"
+                  size={20}
+                  onPress={async () => {
+                    try {
+                      const result = await PortfolioService.pickAndImportCSV();
+                      setSnackbar({visible: true, message: `Imported ${result.successfulImports}/${result.totalRows}`});
+                      await loadPortfolio();
+                    } catch (e: any) {
+                      if (e?.code === 'DOCUMENT_PICKER_CANCELED') return;
+                      setSnackbar({visible: true, message: e?.message || 'Import failed'});
+                    }
+                  }}
+                />
+              </View>
+            </View>
+            <View style={{marginTop: 6}}>
+              <Text style={styles.importHint}>
+                Tip: Select a .csv from Downloads. If files appear greyed out, open the Files app and pick the CSV.
+              </Text>
+            </View>
+          </View>
 
-            <StockList
-              stocks={portfolio.stocks}
-              selectedGroup={selectedGroup}
-              onStockPress={handleStockPress}
-            />
-          </>
-        )}
-
-        {(!portfolio || portfolio.stocks?.length === 0) && (
           <Surface style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, {color: theme.colors.text}]}>
+            <Text style={[styles.emptyTitle, {color: theme.colors.text}]}> 
               Start Building Your Portfolio
             </Text>
-            <Text style={[styles.emptySubtitle, {color: theme.colors.text}]}>
+            <Text style={[styles.emptySubtitle, {color: theme.colors.text}]}> 
               Add your first stock to begin tracking your investments
             </Text>
           </Surface>
-        )}
-      </ScrollView>
+        </View>
+      )}
 
       <Snackbar
         visible={snackbar.visible}
@@ -188,9 +228,6 @@ export const PortfolioScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  scrollView: {
     flex: 1,
   },
   loadingContainer: {
