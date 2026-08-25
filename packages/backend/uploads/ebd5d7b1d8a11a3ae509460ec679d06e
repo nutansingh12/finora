@@ -1,0 +1,3 @@
+symbol,cutoffPrice,groupName,currentPrice,low52Week,low24Week,low12Week,notes,lastUpdated
+AAPL,150,Tech,175.50,124.17,140.00,155.00,Test apple,2026-05-07
+MSFT,280,Tech,415.00,309.45,350.00,380.00,Test msft,2026-05-07
