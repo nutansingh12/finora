@@ -22,32 +22,29 @@ export class RollingAnalysis extends BaseModel {
   // Create or update rolling analysis
   static async upsertAnalysis(data: {
     stock_id: string;
+    current_price: number;
     week_52_low: number;
     week_24_low: number;
     week_12_low: number;
     percent_above_52w_low: number;
     percent_above_24w_low: number;
     percent_above_12w_low: number;
-    volatility: number;
-    trend_direction: 'up' | 'down' | 'sideways';
-    trend_strength: number;
+    volatility?: number;
+    trend_direction?: 'up' | 'down' | 'sideways';
+    trend_strength?: number; // not in DB schema, accepted but not persisted
   }): Promise<RollingAnalysisModel> {
-    const existing = await this.findOne<RollingAnalysisModel>({
-      stock_id: data.stock_id
-    });
+    // trend_strength has no DB column — omit it from the write
+    const { trend_strength, ...dbData } = data;
 
-    if (existing) {
-      return (await this.updateById<RollingAnalysisModel>(existing.id, {
-        ...data,
-        updated_at: new Date()
-      })) as RollingAnalysisModel;
-    } else {
-      return this.create<RollingAnalysisModel>({
-        ...data,
-        created_at: new Date(),
-        updated_at: new Date()
-      });
-    }
+    // Atomic delete-then-insert in a transaction eliminates duplicate rows
+    // that can accumulate when concurrent refreshes race on the same stock_id.
+    return await this.db.transaction(async (trx) => {
+      await trx(this.tableName).where('stock_id', data.stock_id).del();
+      const [row] = await trx(this.tableName)
+        .insert({ ...dbData, created_at: new Date(), updated_at: new Date() })
+        .returning('*');
+      return row;
+    });
   }
 
   // Get latest analysis for a stock

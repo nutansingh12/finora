@@ -2,10 +2,12 @@ import { Request, Response } from 'express';
 import { Stock } from '@/models/Stock';
 import { AlphaVantageService } from '@/services/AlphaVantageService';
 import { YahooFinanceService } from '@/services/YahooFinanceService';
+import { StockPriceService } from '@/services/StockPriceService';
 
 export class SearchController {
   private static alphaVantageService = new AlphaVantageService();
   private static yahooService = new YahooFinanceService();
+  private static stockPriceService = new StockPriceService();
 
   // Search stocks with autocomplete
   static async searchStocks(req: Request, res: Response): Promise<any> {
@@ -92,28 +94,7 @@ export class SearchController {
       // First check local database
       let stock = await Stock.findBySymbol(symbol.toUpperCase());
 
-      // If not found locally, fetch from Alpha Vantage
-      if (!stock) {
-        const avData = await SearchController.alphaVantageService.getStockQuote(symbol);
-
-        if (!avData) {
-          return res.status(404).json({
-            success: false,
-            message: 'Stock not found'
-          });
-        }
-
-        // Create stock in database for future reference
-        stock = await Stock.createStock({
-          symbol: avData.symbol,
-          name: symbol.toUpperCase(),
-          exchange: 'UNKNOWN',
-          sector: undefined,
-          industry: undefined
-        });
-      }
-
-      // Hybrid: try Yahoo first, fallback to Alpha Vantage (per-user key)
+      // Try Yahoo Finance for the live quote (works for most tickers including small-caps)
       const yq = await SearchController.yahooService.getStockQuote(symbol);
       let quote: any = null;
       if (yq) {
@@ -130,11 +111,28 @@ export class SearchController {
           timestamp: Date.now()
         };
       } else {
+        // Fallback to Alpha Vantage
         quote = await SearchController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
       }
 
       if (!quote) {
-        return res.status(404).json({ success: false, message: 'Unable to fetch current quote' });
+        return res.status(404).json({ success: false, message: 'Stock not found. Try a valid ticker.' });
+      }
+
+      // If not in local DB yet, create it now using data from the live quote
+      if (!stock) {
+        stock = await Stock.createStock({
+          symbol: (yq?.symbol || symbol).toUpperCase(),
+          name: yq?.longName || yq?.shortName || symbol.toUpperCase(),
+          exchange: yq?.exchange || 'UNKNOWN',
+          sector: yq?.sector || undefined,
+          industry: yq?.industry || undefined,
+        });
+      }
+
+      // Seed price + rolling_analysis in the background so watchlist shows data immediately
+      if (stock && yq) {
+        SearchController.stockPriceService.updateStockPrice(stock.id, yq).catch(() => {});
       }
 
       res.json({

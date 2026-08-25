@@ -37,31 +37,29 @@ export class StockPrice extends BaseModel {
     two_hundred_day_avg?: number;
     is_latest?: boolean;
   }): Promise<StockPriceModel> {
-    const transaction = await this.db.transaction();
+    const payload = {
+      ...data,
+      is_latest: true,
+      created_at: new Date(),
+    };
 
-    try {
-      // If this is the latest price, mark all other prices for this stock as not latest
-      if (data.is_latest) {
-        await transaction(this.tableName)
-          .where('stock_id', data.stock_id)
-          .update({ is_latest: false });
-      }
+    // Upsert: update the single is_latest row if it exists, otherwise insert
+    const [existing] = await this.db(this.tableName)
+      .where({ stock_id: data.stock_id, is_latest: true })
+      .returning('id');
 
-      // Create new price record
-      const [price] = await transaction(this.tableName)
-        .insert({
-          ...data,
-          is_latest: data.is_latest !== undefined ? data.is_latest : true,
-          created_at: new Date()
-        })
+    if (existing) {
+      const [updated] = await this.db(this.tableName)
+        .where('id', existing.id)
+        .update(payload)
         .returning('*');
-
-      await transaction.commit();
-      return price;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
+      return updated;
     }
+
+    const [inserted] = await this.db(this.tableName)
+      .insert(payload)
+      .returning('*');
+    return inserted;
   }
 
   // Get latest price for a stock

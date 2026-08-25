@@ -51,7 +51,11 @@ class PortfolioServiceClass {
     const resp = await ApiService.post<{ success: boolean; data: ImportResult; message?: string }>(
       API_ENDPOINTS.PORTFOLIO.IMPORT,
       form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
+      {
+        // Increase timeout to allow server-side import (400+ rows) to complete on serverless
+        timeout: 60000,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
     );
 
     if ((resp as any).data?.success === false) {

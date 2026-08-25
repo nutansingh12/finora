@@ -285,8 +285,9 @@ export class YahooFinanceService {
         const volume = quote.volume?.[i] ?? 0;
         const adj = adjClose?.[i] ?? close;
         if (open !== null && close !== null) {
+          const intraday = interval === '1m' || interval === '5m' || interval === '15m' || interval === '30m' || interval === '60m' || interval === '90m';
           historicalData.push({
-            date: new Date(t * 1000).toISOString().split('T')[0] as string,
+            date: intraday ? new Date(t * 1000).toISOString() : new Date(t * 1000).toISOString().split('T')[0] as string,
             open: open as number,
             high: (high as number) ?? (close as number),
             low: (low as number) ?? (close as number),

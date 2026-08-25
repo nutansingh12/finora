@@ -690,8 +690,11 @@ const App: React.FC = () => {
       // @ts-ignore runtime check
       console.log('[Finora] Methods:', PortfolioService && Object.keys(PortfolioService) || 'undefined');
       const result = await PortfolioService.pickAndImportCSV();
-      // Show priced stocks first, then progressively add more as backend fetches prices
-      await loadUserStocksFromBackend(true);
+      // Try priced-only first; if none, fall back to full list so symbols render immediately
+      const pricedCount = await loadUserStocksFromBackend(true);
+      if (!pricedCount) {
+        await loadUserStocksFromBackend(false);
+      }
       refreshMissingPricesLoop().catch(() => {});
       Alert.alert('Import Complete', `Imported ${result.successfulImports}/${result.totalRows}`);
     } catch (e: any) {
@@ -994,7 +997,8 @@ const App: React.FC = () => {
       const pageSize = 100;
       let offset = 0;
       for (;;) {
-        const url = `${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}` + (pricedOnly ? `&onlyWithPrice=true` : '');
+        // Prioritize priced stocks first on the server for faster first paint
+        const url = `${API_BASE_URL}/stocks?limit=${pageSize}&offset=${offset}&prioritizeWithPrice=true` + (pricedOnly ? `&onlyWithPrice=true` : '');
         const resp = await fetch(url as any, {
           headers: {
             'Content-Type': 'application/json',

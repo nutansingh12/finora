@@ -4,6 +4,8 @@ import { AlphaVantageService } from '../services/AlphaVantageService';
 import { validationResult } from 'express-validator';
 import { YahooFinanceIntegrationService } from '../services/YahooFinanceIntegrationService';
 import { YahooFinanceService } from '../services/YahooFinanceService';
+import { Stock } from '../models/Stock';
+import { StockPrice } from '../models/StockPrice';
 
 export class MarketDataController {
   private static alphaVantageService = new AlphaVantageService();
@@ -78,11 +80,11 @@ export class MarketDataController {
       const p = String(period);
       const i = String(interval);
 
-      // Map to Yahoo-friendly range/interval
-      let yahooRange = '1y';
-      let yahooInterval = '1d';
+      // Pass period/interval directly to Yahoo Finance (they use the same format).
+      // Legacy string values ('intraday', 'weekly', 'monthly') are mapped for backward compat.
+      let yahooRange = p;
+      let yahooInterval = i;
       if (p === 'intraday') {
-        // Map common intraday intervals
         yahooRange = '1d';
         yahooInterval = i === '1min' ? '1m' : i === '5min' ? '5m' : i === '15min' ? '15m' : i === '30min' ? '30m' : '60m';
       } else if (p === 'weekly') {
@@ -91,15 +93,36 @@ export class MarketDataController {
       } else if (p === 'monthly') {
         yahooRange = '10y';
         yahooInterval = '1mo';
-      } else {
-        yahooRange = '1y';
-        yahooInterval = '1d';
       }
 
       // Try Yahoo first
       const yahooData = await MarketDataController.yahooService.getHistoricalData(s, yahooRange, yahooInterval);
       if (yahooData && yahooData.length) {
         prices = yahooData.map(d => ({ date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }));
+
+        // Seed the most recent close into stock_prices (fire-and-forget)
+        const sorted = [...prices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const latest = sorted[0];
+        const prev = sorted[1];
+        if (latest?.close) {
+          Stock.findBySymbol(s).then(stock => {
+            if (!stock) return;
+            const change = prev?.close ? latest.close - prev.close : 0;
+            const changePct = prev?.close ? (change / prev.close) * 100 : 0;
+            const closes = sorted.slice(0, 252).map((d: any) => d.close);
+            const high52 = Math.max(...closes);
+            const low52 = Math.min(...closes);
+            StockPrice.createPrice({
+              stock_id: stock.id,
+              price: latest.close,
+              change,
+              change_percent: changePct,
+              volume: latest.volume || 0,
+              fifty_two_week_high: high52,
+              fifty_two_week_low: low52,
+            }).catch(() => {});
+          }).catch(() => {});
+        }
       } else {
         // Fallback to Alpha Vantage
         if (p === 'intraday') {
@@ -120,13 +143,17 @@ export class MarketDataController {
         }
       }
 
+      const sortedForLatest = [...prices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const latestClose = sortedForLatest[0]?.close ?? null;
+
       res.json({
         success: true,
         data: {
           symbol: symbol.toUpperCase(),
           period,
           interval,
-          prices
+          prices,
+          latestClose,
         }
       });
     } catch (error) {

@@ -24,6 +24,7 @@ import {
 
 import { useAuthStore } from '@/store/authStore';
 import { usePortfolioStore } from '@/store/portfolioStore';
+import apiService from '@/services/api';
 import Layout from '@/components/Layout';
 import PortfolioSummaryCard from '@/components/portfolio/PortfolioSummaryCard';
 import StockList from '@/components/portfolio/StockList';
@@ -45,6 +46,7 @@ const Dashboard: NextPage = () => {
   } = usePortfolioStore();
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [activeAlertCount, setActiveAlertCount] = useState<number | null>(null);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -62,6 +64,16 @@ const Dashboard: NextPage = () => {
             fetchPortfolio(),
             fetchPerformance('1Y'),
           ]);
+          // Load alert count separately (non-fatal)
+          try {
+            const alertResp = await apiService.get<any>('/alerts');
+            if (alertResp.success) {
+              const items = alertResp.data?.alerts || alertResp.data || [];
+              setActiveAlertCount(Array.isArray(items) ? items.filter((a: any) => a.is_active).length : 0);
+            }
+          } catch {
+            setActiveAlertCount(0);
+          }
         } catch (error) {
           console.error('Failed to load dashboard data:', error);
         } finally {
@@ -175,7 +187,7 @@ const Dashboard: NextPage = () => {
                       startIcon={<Add />}
                       onClick={() => router.push('/portfolio/add-stock')}
                     >
-                      Add Stock
+                      Add to Watchlist
                     </Button>
                   </Box>
                   <StockList
@@ -260,7 +272,10 @@ const Dashboard: NextPage = () => {
             </Grid>
 
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
+              <Card
+                sx={{ cursor: 'pointer', '&:hover': { boxShadow: 4 } }}
+                onClick={() => router.push('/alerts')}
+              >
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <Notifications color="warning" sx={{ mr: 1 }} />
@@ -269,7 +284,7 @@ const Dashboard: NextPage = () => {
                     </Typography>
                   </Box>
                   <Typography variant="h4" component="div">
-                    0
+                    {activeAlertCount ?? <Skeleton width={40} />}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Price Alerts

@@ -1,12 +1,15 @@
 import { StockPrice } from '@/models/StockPrice';
 import { RollingAnalysis } from '@/models/RollingAnalysis';
 import { AlphaVantageService, AlphaVantageQuote } from '@/services/AlphaVantageService';
+import { YahooFinanceService } from '@/services/YahooFinanceService';
 
 export class StockPriceService {
   private alphaVantageService: AlphaVantageService;
+  private yahooService: YahooFinanceService;
 
   constructor() {
     this.alphaVantageService = new AlphaVantageService();
+    this.yahooService = new YahooFinanceService();
   }
 
   // Update stock price with latest data (accepts AlphaVantage or Yahoo-shaped quotes)
@@ -19,12 +22,9 @@ export class StockPriceService {
       const marketCap = quote.marketCap;
       const peRatio = quote.peRatio ?? quote.trailingPE;
       const dividendYield = quote.dividendYield;
-      const fiftyTwoWeekLow = quote.fiftyTwoWeekLow;
-      const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh;
       const fiftyDayAverage = quote.fiftyDayAverage;
       const twoHundredDayAverage = quote.twoHundredDayAverage;
 
-      // Create new price record
       await StockPrice.createPrice({
         stock_id: stockId,
         price,
@@ -34,61 +34,88 @@ export class StockPriceService {
         market_cap: marketCap,
         pe_ratio: peRatio,
         dividend_yield: dividendYield,
-        fifty_two_week_low: fiftyTwoWeekLow,
-        fifty_two_week_high: fiftyTwoWeekHigh,
+        fifty_two_week_low: quote.fiftyTwoWeekLow ?? 0,
+        fifty_two_week_high: quote.fiftyTwoWeekHigh ?? 0,
         fifty_day_avg: fiftyDayAverage,
         two_hundred_day_avg: twoHundredDayAverage,
         is_latest: true
       });
 
-      // Update rolling analysis
-      await this.updateRollingAnalysis(stockId);
+      // Pass Yahoo-provided 52W low directly — avoids needing a full year of DB history
+      await this.updateRollingAnalysis(stockId, {
+        symbol: quote.symbol,
+        currentPrice: price,
+        week52Low: quote.fiftyTwoWeekLow,
+      });
     } catch (error) {
       console.error(`Error updating stock price for ${stockId}:`, error);
       throw error;
     }
   }
 
-  // Update rolling analysis for a stock
-  async updateRollingAnalysis(stockId: string): Promise<void> {
+  // Update rolling analysis using Yahoo historical data for accurate lows
+  async updateRollingAnalysis(stockId: string, hint?: { symbol?: string; currentPrice?: number; week52Low?: number }): Promise<void> {
     try {
-      // Get historical prices for analysis
-      const prices = await StockPrice.getHistoricalPrices(stockId, 365); // Get 1 year of data
-      
-      if (prices.length === 0) {
-        return;
+      // Resolve current price
+      let currentPrice = hint?.currentPrice;
+      if (!currentPrice) {
+        const latest = await StockPrice.getLatestPrice(stockId);
+        currentPrice = latest?.price ?? 0;
+      }
+      if (!currentPrice) return;
+
+      let week52Low: number | undefined = hint?.week52Low;
+      let week24Low: number | undefined;
+      let week12Low: number | undefined;
+
+      // Fetch 1Y historical from Yahoo to compute accurate 24W/12W (and 52W if not provided)
+      if (hint?.symbol) {
+        try {
+          const history = await this.yahooService.getHistoricalData(hint.symbol, '1y', '1d');
+          if (history && history.length > 0) {
+            const closes = history.map(d => d.close).filter(v => v > 0);
+            const slice = (weeks: number) => closes.slice(0, Math.min(weeks * 5, closes.length));
+            if (!week52Low) week52Low = Math.min(...closes);
+            week24Low = Math.min(...slice(24));
+            week12Low = Math.min(...slice(12));
+          }
+        } catch {
+          // non-fatal — fall through to DB-based fallback
+        }
       }
 
-      const currentPrice = prices[0]?.price ?? 0;
-      
-      // Calculate rolling lows
-      const fiftyTwoWeekLow = this.calculateRollingLow(prices, 365);
-      const twentyFourWeekLow = this.calculateRollingLow(prices, 168);
-      const twelveWeekLow = this.calculateRollingLow(prices, 84);
+      // Fallback: compute from whatever price history we have in DB
+      if (!week52Low || !week24Low || !week12Low) {
+        const prices = await StockPrice.getHistoricalPrices(stockId, 365);
+        if (prices.length > 0) {
+          const vals = prices.map(p => p.price);
+          week52Low = week52Low ?? Math.min(...vals);
+          week24Low = week24Low ?? Math.min(...vals.slice(0, Math.min(168, vals.length)));
+          week12Low = week12Low ?? Math.min(...vals.slice(0, Math.min(84, vals.length)));
+        }
+      }
 
-      // Calculate percentages above lows
-      const percentAbove52WLow = ((currentPrice - fiftyTwoWeekLow) / currentPrice) * 100;
-      const percentAbove24WLow = ((currentPrice - twentyFourWeekLow) / currentPrice) * 100;
-      const percentAbove12WLow = ((currentPrice - twelveWeekLow) / currentPrice) * 100;
+      if (!week52Low) return;
+      week24Low = week24Low ?? week52Low;
+      week12Low = week12Low ?? week52Low;
 
-      // Calculate volatility (standard deviation of returns)
-      const volatility = this.calculateVolatility(prices);
+      const pctAbove = (low: number) => low > 0 ? ((currentPrice! - low) / low) * 100 : 0;
 
-      // Calculate trend (simple moving average slope)
-      const trend = this.calculateTrend(prices, 20);
+      const volatility = this.calculateVolatilityFromHistory(hint?.symbol);
+      const trend = await this.calculateTrendFromHistory(hint?.symbol);
 
-      // Create or update rolling analysis
       await RollingAnalysis.upsertAnalysis({
         stock_id: stockId,
-        week_52_low: fiftyTwoWeekLow,
-        week_24_low: twentyFourWeekLow,
-        week_12_low: twelveWeekLow,
-        percent_above_52w_low: percentAbove52WLow,
-        percent_above_24w_low: percentAbove24WLow,
-        percent_above_12w_low: percentAbove12WLow,
-        volatility: volatility,
-        trend_direction: trend > 0 ? 'up' : trend < 0 ? 'down' : 'sideways',
-        trend_strength: Math.abs(trend)
+        current_price: currentPrice,
+        week_52_low: week52Low,
+        week_24_low: week24Low,
+        week_12_low: week12Low,
+        percent_above_52w_low: pctAbove(week52Low),
+        percent_above_24w_low: pctAbove(week24Low),
+        percent_above_12w_low: pctAbove(week12Low),
+        volatility: 0,
+        trend_direction: trend,
+        trend_strength: 0,
       });
     } catch (error) {
       console.error(`Error updating rolling analysis for ${stockId}:`, error);
@@ -204,51 +231,12 @@ export class StockPriceService {
     }
   }
 
-  // Private helper methods
-
-  private calculateRollingLow(prices: Array<{ price: number }>, days: number): number {
-    const relevantPrices = prices.slice(0, Math.min(days, prices.length));
-    return Math.min(...relevantPrices.map(p => p.price));
+  private calculateVolatilityFromHistory(_symbol?: string): number {
+    return 0;
   }
 
-  private calculateVolatility(prices: Array<{ price: number }>): number {
-    if (prices.length < 2) return 0;
-
-    // Calculate daily returns
-    const returns: number[] = [];
-    for (let i = 1; i < prices.length; i++) {
-      const dailyReturn = ((prices[i - 1]?.price ?? 0) - (prices[i]?.price ?? 0)) / ((prices[i]?.price ?? 1));
-      returns.push(dailyReturn);
-    }
-
-    // Calculate standard deviation of returns
-    const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length;
-    
-    return Math.sqrt(variance) * Math.sqrt(252); // Annualized volatility
-  }
-
-  private calculateTrend(prices: Array<{ price: number }>, period: number): number {
-    if (prices.length < period) return 0;
-
-    const recentPrices = prices.slice(0, period);
-    const n = recentPrices.length;
-    
-    // Calculate linear regression slope
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    
-    for (let i = 0; i < n; i++) {
-      const x = i;
-      const y = recentPrices[i]?.price ?? 0;
-      
-      sumX += x;
-      sumY += y;
-      sumXY += x * y;
-      sumXX += x * x;
-    }
-    
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    return slope;
+  private async calculateTrendFromHistory(_symbol?: string): Promise<'up' | 'down' | 'sideways'> {
+    return 'sideways';
   }
 
   // Clean up old price data

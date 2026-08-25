@@ -126,7 +126,14 @@ export class UserStock extends BaseModel {
       })
       .modify((qb: any) => {
         if (hasRollingAnalysis) {
-          qb.leftJoin('rolling_analysis as ra', 'ra.stock_id', 'user_stocks.stock_id');
+          // DISTINCT ON prevents fan-out when multiple rolling_analysis rows exist per stock
+          qb.leftJoin(
+            BaseModel.db.raw(
+              '(SELECT DISTINCT ON (stock_id) * FROM rolling_analysis ORDER BY stock_id, updated_at DESC NULLS LAST) ra'
+            ),
+            'ra.stock_id',
+            'user_stocks.stock_id'
+          );
         }
       })
       .where('user_stocks.user_id', userId);
@@ -187,7 +194,7 @@ export class UserStock extends BaseModel {
   // Update user stock
   static async updateUserStock(
     userId: string,
-    stockId: string,
+    userStockId: string,
     updates: {
       target_price?: number;
       cutoff_price?: number;
@@ -197,7 +204,7 @@ export class UserStock extends BaseModel {
   ): Promise<UserStockModel | null> {
     const existing = await this.findOne<UserStockModel>({
       user_id: userId,
-      stock_id: stockId,
+      id: userStockId,
       is_active: true
     });
 
@@ -212,11 +219,10 @@ export class UserStock extends BaseModel {
   }
 
   // Remove stock from user's portfolio
-  static async removeUserStock(userId: string, stockId: string): Promise<boolean> {
+  static async removeUserStock(userId: string, userStockId: string): Promise<boolean> {
     const result = await this.db(this.tableName)
       .where('user_id', userId)
-      .where('stock_id', stockId)
-      .where('is_active', true)
+      .where('id', userStockId)
       .update({
         is_active: false,
         updated_at: new Date()

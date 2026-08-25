@@ -68,29 +68,33 @@ const PortfolioSummaryCard = ({ portfolio, isLoading }: PortfolioSummaryCardProp
   }
 
   const getTrendIcon = (value: number) => {
-    if (value > 0) return <TrendingUp color="success" />;
-    if (value < 0) return <TrendingDown color="error" />;
+    const n = Number(value) || 0;
+    if (n > 0) return <TrendingUp color="success" />;
+    if (n < 0) return <TrendingDown color="error" />;
     return <TrendingFlat color="disabled" />;
   };
 
   const getTrendColor = (value: number) => {
-    if (value > 0) return 'success.main';
-    if (value < 0) return 'error.main';
+    const n = Number(value) || 0;
+    if (n > 0) return 'success.main';
+    if (n < 0) return 'error.main';
     return 'text.secondary';
   };
 
   const formatCurrency = (value: number) => {
+    const n = Number(value) || 0;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(value);
+    }).format(n);
   };
 
   const formatPercentage = (value: number) => {
-    const sign = value > 0 ? '+' : '';
-    return `${sign}${value.toFixed(2)}%`;
+    const n = Number(value) || 0;
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${n.toFixed(2)}%`;
   };
 
   return (
@@ -147,7 +151,7 @@ const PortfolioSummaryCard = ({ portfolio, isLoading }: PortfolioSummaryCardProp
                   color: getTrendColor(portfolio.totalGainLoss)
                 }}
               >
-                {portfolio.totalGainLoss >= 0 ? '+' : ''}
+                {(Number(portfolio.totalGainLoss) || 0) >= 0 ? '+' : ''}
                 {formatCurrency(portfolio.totalGainLoss)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
@@ -180,7 +184,7 @@ const PortfolioSummaryCard = ({ portfolio, isLoading }: PortfolioSummaryCardProp
                   color: getTrendColor(portfolio.dayChange)
                 }}
               >
-                {portfolio.dayChange >= 0 ? '+' : ''}
+                {(Number(portfolio.dayChange) || 0) >= 0 ? '+' : ''}
                 {formatCurrency(portfolio.dayChange)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>

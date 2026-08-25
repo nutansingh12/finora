@@ -8,6 +8,10 @@ import { AlphaVantageService } from '../services/AlphaVantageService';
 import { StockPriceService } from '../services/StockPriceService';
 import { YahooFinanceIntegrationService } from '../services/YahooFinanceIntegrationService';
 
+// Per-user cooldown for price refreshes (60 seconds)
+const refreshCooldowns = new Map<string, number>();
+const REFRESH_COOLDOWN_MS = 60 * 1000;
+
 export class StockController {
   private static alphaVantageService = new AlphaVantageService();
   private static stockPriceService = new StockPriceService();
@@ -41,7 +45,14 @@ export class StockController {
         prioritizeWithPrice: toBool(req.query.prioritizeWithPrice ?? 'true')
       } as const;
 
-      const stocks = await UserStock.getUserStocks(userId, options);
+      let stocks = await UserStock.getUserStocks(userId, options);
+
+      // If client asked for only priced rows but none exist yet (e.g., right after import),
+      // fall back to returning unpriced rows so the UI can render immediately.
+      if (options.onlyWithPrice && (!stocks || stocks.length === 0)) {
+        const fallbackOptions = { ...options, onlyWithPrice: false, prioritizeWithPrice: true as const };
+        stocks = await UserStock.getUserStocks(userId, fallbackOptions);
+      }
 
       res.json({
         success: true,
@@ -76,38 +87,36 @@ export class StockController {
         });
       }
 
-      // Get or create stock
+      // Fetch live Yahoo quote first — used for both stock creation and price seeding
+      const yahooData = await StockController.integrationService.getComprehensiveStockData(symbol);
+
+      // Get or create stock record
       let stock = await Stock.findBySymbol(symbol.toUpperCase());
 
       if (!stock) {
-        // Fetch stock data from Alpha Vantage
-        const stockData = await StockController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
-
-        if (!stockData) {
-          return res.status(404).json({
-            success: false,
-            message: 'Stock not found'
+        if (!yahooData) {
+          // Yahoo failed — try Alpha Vantage as last resort
+          const avData = await StockController.alphaVantageService.getStockQuote(symbol, { userId: (req as any).user?.id });
+          if (!avData) {
+            return res.status(404).json({ success: false, message: 'Stock not found' });
+          }
+          stock = await Stock.upsertStock({ symbol: avData.symbol, name: symbol.toUpperCase(), exchange: 'UNKNOWN' });
+          if (!stock) return res.status(500).json({ success: false, message: 'Failed to create stock' });
+          await StockController.stockPriceService.updateStockPrice(stock.id, avData);
+        } else {
+          stock = await Stock.upsertStock({
+            symbol: yahooData.symbol || symbol.toUpperCase(),
+            name: yahooData.longName || yahooData.shortName || symbol.toUpperCase(),
+            exchange: yahooData.exchange || 'UNKNOWN',
+            sector: (yahooData as any).sector || undefined,
+            industry: (yahooData as any).industry || undefined,
           });
+          if (!stock) return res.status(500).json({ success: false, message: 'Failed to create stock' });
+          await StockController.stockPriceService.updateStockPrice(stock.id, yahooData);
         }
-
-        stock = await Stock.upsertStock({
-          symbol: stockData.symbol,
-          name: symbol.toUpperCase(),
-          exchange: 'UNKNOWN',
-          sector: undefined,
-          industry: undefined
-        });
-
-        if (!stock) {
-          res.status(500).json({
-            success: false,
-            message: 'Failed to create stock'
-          });
-          return;
-        }
-
-        // Initialize stock price data
-        await StockController.stockPriceService.updateStockPrice(stock.id, stockData);
+      } else if (yahooData) {
+        // Stock already in DB — seed/refresh price and rolling analysis so the watchlist shows live data
+        await StockController.stockPriceService.updateStockPrice(stock.id, yahooData);
       }
 
       // Add to user's portfolio
@@ -165,12 +174,15 @@ export class StockController {
         return;
       }
 
-      const updatedStock = await UserStock.updateUserStock(userId, stockId, {
-        target_price: targetPrice,
-        cutoff_price: cutoffPrice,
-        group_id: groupId,
-        notes
-      });
+      // Both target_price and cutoff_price represent the same "cutoff/buy target" concept.
+      // Keep them in sync so whichever column the query returns first always reflects the edit.
+      const effectivePrice = cutoffPrice ?? targetPrice;
+      const updates: Record<string, any> = {};
+      if (effectivePrice !== undefined) { updates.target_price = effectivePrice; updates.cutoff_price = effectivePrice; }
+      if (groupId !== undefined) updates.group_id = groupId;
+      if (notes !== undefined) updates.notes = notes;
+
+      const updatedStock = await UserStock.updateUserStock(userId, stockId, updates);
 
       if (!updatedStock) {
         return res.status(404).json({
@@ -204,6 +216,15 @@ export class StockController {
       if (!userId) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
+
+      // Enforce per-user cooldown to prevent hammering Yahoo Finance
+      const lastRefresh = refreshCooldowns.get(userId) ?? 0;
+      const msSinceLast = Date.now() - lastRefresh;
+      if (msSinceLast < REFRESH_COOLDOWN_MS) {
+        const waitSec = Math.ceil((REFRESH_COOLDOWN_MS - msSinceLast) / 1000);
+        return res.json({ success: true, message: `Rate limited — try again in ${waitSec}s`, data: { updated: 0, failed: 0, symbols: [] } });
+      }
+      refreshCooldowns.set(userId, Date.now());
 
       const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
 

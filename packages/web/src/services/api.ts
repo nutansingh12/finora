@@ -81,9 +81,12 @@ class ApiService {
       },
       (error) => {
         if (error.response?.status === 401) {
-          // Handle unauthorized access
+          // Handle unauthorized access — clear both the raw token and the
+          // Zustand-persisted auth state so the login page doesn't immediately
+          // redirect back to the dashboard with stale isAuthenticated: true.
           this.clearAuthToken();
           if (typeof window !== 'undefined') {
+            localStorage.removeItem('finora-auth');
             window.location.href = '/auth/login';
           }
         }

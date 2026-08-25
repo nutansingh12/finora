@@ -37,6 +37,7 @@ import {
 
 import { useAuthStore } from '@/store/authStore';
 import { FeedbackButton } from './feedback/FeedbackButton';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface LayoutProps {
   children: ReactNode;
@@ -50,7 +51,9 @@ const Layout = ({ children }: LayoutProps) => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   const { user, logout } = useAuthStore();
-  
+
+  useAutoRefresh();
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -79,7 +82,7 @@ const Layout = ({ children }: LayoutProps) => {
       path: '/',
     },
     {
-      text: 'Portfolio',
+      text: 'Watchlist',
       icon: <AccountBalance />,
       path: '/portfolio',
     },
@@ -190,12 +193,14 @@ const Layout = ({ children }: LayoutProps) => {
           
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {router.pathname === '/' && 'Dashboard'}
-            {router.pathname === '/portfolio' && 'Portfolio'}
+            {router.pathname === '/portfolio' && 'Watchlist'}
             {router.pathname === '/market' && 'Market'}
             {router.pathname === '/analytics' && 'Analytics'}
             {router.pathname === '/alerts' && 'Alerts'}
             {router.pathname === '/search' && 'Search'}
             {router.pathname === '/settings' && 'Settings'}
+            {router.pathname === '/profile' && 'Profile'}
+            {router.pathname.startsWith('/stocks/') && 'Stock Details'}
           </Typography>
 
           {/* Notifications */}

@@ -72,8 +72,7 @@ export class AlphaVantageService {
     console.log(`🔑 Alpha Vantage Service initialized with ${this.keyPool.length} API keys`);
 
     if (this.keyPool.length === 0) {
-      console.error('❌ No valid Alpha Vantage API keys found! Please add keys to .env file');
-      throw new Error('No Alpha Vantage API keys configured');
+      console.warn('⚠️  No valid Alpha Vantage API keys found — Alpha Vantage features will be unavailable');
     }
 
     // Initialize key usage tracking

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NextPage } from 'next';
 import Head from 'next/head';
-import Link from 'next/link';
+import NextLink from 'next/link';
 import { useRouter } from 'next/router';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -199,11 +199,9 @@ const LoginPage: NextPage = () => {
               </Button>
 
               <Box sx={{ textAlign: 'center', mb: 2 }}>
-                <Link href="/auth/forgot-password" passHref>
-                  <MuiLink variant="body2" color="primary">
-                    Forgot your password?
-                  </MuiLink>
-                </Link>
+                <MuiLink component={NextLink} href="/auth/forgot-password" variant="body2" color="primary">
+                  Forgot your password?
+                </MuiLink>
               </Box>
 
               <Divider sx={{ my: 2 }}>
@@ -215,11 +213,9 @@ const LoginPage: NextPage = () => {
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
                   Don't have an account?{' '}
-                  <Link href="/auth/register" passHref>
-                    <MuiLink variant="body2" color="primary" sx={{ fontWeight: 'medium' }}>
-                      Sign up here
-                    </MuiLink>
-                  </Link>
+                  <MuiLink component={NextLink} href="/auth/register" variant="body2" color="primary" sx={{ fontWeight: 'medium' }}>
+                    Sign up here
+                  </MuiLink>
                 </Typography>
               </Box>
             </Box>

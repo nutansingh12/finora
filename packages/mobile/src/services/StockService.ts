@@ -107,8 +107,17 @@ class StockServiceClass {
 
   async getUserStocks(): Promise<UserStock[]> {
     try {
-      const response = await ApiService.get<UserStock[]>(API_ENDPOINTS.STOCKS.USER_STOCKS);
-      return response.data;
+      // Prefer server to return priced rows first for faster first paint
+      const response = await ApiService.get<{ stocks: UserStock[] }>(
+        `/stocks?prioritizeWithPrice=true`
+      );
+      // Normalize payload shapes:
+      // - { success, data: { stocks: [...] } }
+      // - { stocks: [...] }
+      // - [ ... ] (legacy)
+      const api = (response as any)?.data;
+      const payload = (api?.data?.stocks ?? api?.stocks ?? api) as any;
+      return Array.isArray(payload) ? (payload as UserStock[]) : [];
     } catch (error) {
       ApiService.handleError(error);
     }

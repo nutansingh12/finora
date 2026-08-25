@@ -46,7 +46,7 @@ export interface CompanyProfile {
 export class YahooFinanceIntegrationService {
   private yahooService: YahooFinanceService;
   private stockPriceService: StockPriceService;
-  private batchSize: number = 10;
+  private batchSize: number = 5;
   private maxRetries: number = 3;
 
   constructor() {
@@ -120,15 +120,25 @@ export class YahooFinanceIntegrationService {
             if (stockData) {
               // Find or create stock in database
               let stock = await Stock.findBySymbol(symbol);
-              
+              const resolvedName = stockData.longName || stockData.shortName || symbol;
+
               if (!stock) {
                 stock = await Stock.upsertStock({
                   symbol: stockData.symbol,
-                  name: stockData.longName || stockData.shortName || symbol,
+                  name: resolvedName,
                   exchange: stockData.exchange,
                   sector: stockData.sector,
                   industry: stockData.industry
                 });
+              } else if (!stock.name || stock.name === symbol) {
+                // Back-fill name if it was never set (just the symbol stored)
+                await Stock.db('stocks').where('id', stock.id).update({
+                  name: resolvedName,
+                  exchange: stockData.exchange || stock.exchange,
+                  sector: stockData.sector || stock.sector,
+                  industry: stockData.industry || stock.industry,
+                });
+                stock = { ...stock, name: resolvedName };
               }
 
               if (stock) {
@@ -148,10 +158,10 @@ export class YahooFinanceIntegrationService {
         });
 
         await Promise.all(batchPromises);
-        
-        // Small delay between batches
+
+        // Delay between batches to avoid Yahoo Finance rate limiting
         if (i + this.batchSize < symbols.length) {
-          await this.delay(500);
+          await this.delay(2000);
         }
       }
     } catch (error) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useCallback, useMemo} from 'react';
 import {View, StyleSheet, FlatList} from 'react-native';
 import {Card, Text, useTheme, TouchableRipple} from 'react-native-paper';
 import {formatCurrency, formatPercent} from '../../utils/formatters';
@@ -17,24 +17,30 @@ interface Stock {
   groupId?: string;
 }
 
-interface Props {
+  interface Props {
   stocks: Stock[];
   selectedGroup: string;
   onStockPress: (stock: Stock) => void;
+  ListHeaderComponent?: React.ReactElement | null;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 export const StockList: React.FC<Props> = ({
   stocks,
   selectedGroup,
   onStockPress,
+  ListHeaderComponent,
+  refreshing,
+  onRefresh,
 }) => {
   const theme = useTheme();
 
-  const filteredStocks = stocks.filter(stock => 
-    selectedGroup === 'all' || stock.groupId === selectedGroup
-  );
+  const filteredStocks = useMemo(() => (
+    stocks.filter(stock => selectedGroup === 'all' || stock.groupId === selectedGroup)
+  ), [stocks, selectedGroup]);
 
-  const renderStock = ({item}: {item: Stock}) => {
+  const renderStock = useCallback(({item}: {item: Stock}) => {
     const gainColor = item.totalGain >= 0 
       ? theme.colors.success || '#4CAF50'
       : theme.colors.error || '#F44336';
@@ -42,6 +48,8 @@ export const StockList: React.FC<Props> = ({
     const dayGainColor = item.dayGain >= 0
       ? theme.colors.success || '#4CAF50'
       : theme.colors.error || '#F44336';
+
+    const hasLivePrice = Number.isFinite(item.currentPrice) && item.currentPrice > 0;
 
     return (
       <Card style={styles.stockCard}>
@@ -58,7 +66,7 @@ export const StockList: React.FC<Props> = ({
               </View>
               <View style={styles.priceInfo}>
                 <Text style={[styles.currentPrice, {color: theme.colors.text}]}>
-                  {formatCurrency(item.currentPrice)}
+                  {hasLivePrice ? formatCurrency(item.currentPrice) : '—'}
                 </Text>
                 <Text style={[styles.shares, {color: theme.colors.text}]}>
                   {item.shares} shares
@@ -77,11 +85,11 @@ export const StockList: React.FC<Props> = ({
                 </Text>
               </View>
               <View style={styles.dayGainInfo}>
-                <Text style={[styles.dayGain, {color: dayGainColor}]}>
-                  {item.dayGain >= 0 ? '+' : ''}{formatCurrency(item.dayGain)}
+                <Text style={[styles.dayGain, {color: dayGainColor}]}> 
+                  {hasLivePrice ? `${item.dayGain >= 0 ? '+' : ''}${formatCurrency(item.dayGain)}` : '—'}
                 </Text>
-                <Text style={[styles.dayGainPercent, {color: dayGainColor}]}>
-                  ({item.dayGainPercent >= 0 ? '+' : ''}{formatPercent(item.dayGainPercent)})
+                <Text style={[styles.dayGainPercent, {color: dayGainColor}]}> 
+                  {hasLivePrice ? `(${item.dayGainPercent >= 0 ? '+' : ''}${formatPercent(item.dayGainPercent)})` : ''}
                 </Text>
               </View>
             </View>
@@ -89,17 +97,7 @@ export const StockList: React.FC<Props> = ({
         </TouchableRipple>
       </Card>
     );
-  };
-
-  if (filteredStocks.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={[styles.emptyText, {color: theme.colors.text}]}>
-          No stocks in this group
-        </Text>
-      </View>
-    );
-  }
+  }, [onStockPress, theme]);
 
   return (
     <FlatList
@@ -108,6 +106,20 @@ export const StockList: React.FC<Props> = ({
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.listContainer}
       showsVerticalScrollIndicator={false}
+      ListHeaderComponent={ListHeaderComponent || null}
+      ListEmptyComponent={(
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, {color: theme.colors.text}]}>No stocks in this group</Text>
+        </View>
+      )}
+      // Virtualization/perf tuning
+      initialNumToRender={12}
+      windowSize={10}
+      maxToRenderPerBatch={16}
+      updateCellsBatchingPeriod={80}
+      removeClippedSubviews
+      refreshing={!!refreshing}
+      onRefresh={onRefresh}
     />
   );
 };

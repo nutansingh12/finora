@@ -62,6 +62,7 @@ interface PortfolioStore {
   addStock: (stockData: AddStockForm) => Promise<UserStock>;
   updateStock: (stockId: string, updates: Partial<AddStockForm>) => Promise<UserStock>;
   removeStock: (stockId: string) => Promise<void>;
+  patchStockPrice: (symbol: string, price: number) => void;
   
   createGroup: (groupData: CreateGroupForm) => Promise<StockGroup>;
   updateGroup: (groupId: string, updates: Partial<CreateGroupForm>) => Promise<StockGroup>;
@@ -76,10 +77,18 @@ interface PortfolioStore {
   
   // Utility actions
   refreshAll: () => Promise<void>;
+  silentRefreshStocks: () => Promise<void>;
   getStockById: (stockId: string) => UserStock | undefined;
   getGroupById: (groupId: string) => StockGroup | undefined;
   getStocksByGroup: (groupId: string | null) => UserStock[];
 }
+
+// Normalize raw DB rows: ensure groupId (camelCase) is always set from group_id (snake_case)
+const normalizeStocks = (stocks: any[]): UserStock[] =>
+  (stocks || []).map((s: any) => ({
+    ...s,
+    groupId: s.groupId ?? s.group_id ?? undefined,
+  }));
 
 export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
   // Initial state
@@ -96,22 +105,22 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const portfolio = await portfolioService.getPortfolio();
-      set({ 
-        portfolio, 
-        stocks: portfolio.stocks,
+      set({
+        portfolio,
+        stocks: normalizeStocks(portfolio.stocks),
         groups: portfolio.groups,
-        isLoading: false 
+        isLoading: false
       });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to fetch portfolio', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to fetch portfolio',
+        isLoading: false
       });
       throw error;
     }
   },
 
-  fetchStocks: async (page = 1, limit = 50) => {
+  fetchStocks: async (page = 1, limit = 100) => {
     set({ isLoading: true, error: null });
     try {
       const response = await portfolioService.getUserStocks(page, limit);
@@ -119,6 +128,11 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
         stocks: response.data, 
         isLoading: false 
       });
+      // After the first page loads, trigger background price refresh to fill missing quotes
+      if (page === 1) {
+        // Fire-and-forget; don't block UI
+        void portfolioService.refreshPrices(50, 2);
+      }
     } catch (error: any) {
       set({ 
         error: error.message || 'Failed to fetch stocks', 
@@ -182,8 +196,8 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
       }));
       
       // Refresh portfolio to get updated totals
-      get().fetchPortfolio();
-      
+      get().fetchPortfolio().catch(() => {});
+
       return newStock;
     } catch (error: any) {
       set({ 
@@ -195,27 +209,29 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
   },
 
   updateStock: async (stockId: string, updates: Partial<AddStockForm>) => {
-    set({ isLoading: true, error: null });
     try {
-      const updatedStock = await portfolioService.updateStock(stockId, updates);
-      
-      // Update local state
+      await portfolioService.updateStock(stockId, updates);
+      // Patch fields in place — the API returns a bare DB row without price/symbol data,
+      // so replacing the whole stock would make it vanish from the list.
+      const effectivePrice = (updates as any).cutoffPrice ?? (updates as any).targetPrice;
       set(state => ({
-        stocks: state.stocks.map(stock => 
-          stock.id === stockId ? updatedStock : stock
-        ),
-        isLoading: false
+        stocks: state.stocks.map(stock => {
+          if (stock.id !== stockId) return stock;
+          const patch: any = {};
+          if (effectivePrice !== undefined) {
+            patch.cutoffPrice = effectivePrice;
+            patch.cutoff_price = effectivePrice;
+            patch.targetPrice = effectivePrice;
+            patch.target_price = effectivePrice;
+          }
+          if ((updates as any).groupId !== undefined) patch.groupId = (updates as any).groupId;
+          if ((updates as any).notes !== undefined) patch.notes = (updates as any).notes;
+          return { ...stock, ...patch };
+        }),
       }));
-      
-      // Refresh portfolio to get updated totals
-      get().fetchPortfolio();
-      
-      return updatedStock;
+      return get().stocks.find(s => s.id === stockId) as UserStock;
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to update stock', 
-        isLoading: false 
-      });
+      set({ error: error.message || 'Failed to update stock' });
       throw error;
     }
   },
@@ -232,11 +248,11 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
       }));
       
       // Refresh portfolio to get updated totals
-      get().fetchPortfolio();
+      get().fetchPortfolio().catch(() => {});
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to remove stock', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to remove stock',
+        isLoading: false
       });
       throw error;
     }
@@ -306,24 +322,21 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
   },
 
   moveStockToGroup: async (stockId: string, groupId: string | null) => {
-    set({ isLoading: true, error: null });
     try {
-      const updatedStock = await portfolioService.moveStockToGroup(stockId, groupId);
-      
-      // Update local state
-      set(state => ({
-        stocks: state.stocks.map(stock => 
-          stock.id === stockId ? updatedStock : stock
-        ),
-        isLoading: false
-      }));
-      
-      return updatedStock;
-    } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to move stock', 
-        isLoading: false 
+      await portfolioService.moveStockToGroup(stockId, groupId);
+      // Patch groupId in the existing stock rather than replacing with the incomplete API row
+      let patched: UserStock | undefined;
+      set(state => {
+        const stocks = state.stocks.map(stock => {
+          if (stock.id !== stockId) return stock;
+          patched = { ...stock, groupId: groupId ?? undefined } as any;
+          return patched!;
+        });
+        return { stocks };
       });
+      return patched!;
+    } catch (error: any) {
+      set({ error: error.message || 'Failed to move stock' });
       throw error;
     }
   },
@@ -355,6 +368,29 @@ export const usePortfolioStore = create<PortfolioStore>((set, get) => ({
       get().fetchPerformance(),
       get().fetchAllocation(),
     ]);
+  },
+
+  // Silent refresh — updates stocks/portfolio without showing the loading spinner
+  silentRefreshStocks: async () => {
+    try {
+      // Kick backend price refresh (fire-and-forget)
+      void portfolioService.refreshPrices(100, 5);
+      // Re-fetch portfolio and update state without touching isLoading
+      const portfolio = await portfolioService.getPortfolio();
+      set({ portfolio, stocks: normalizeStocks(portfolio.stocks), groups: portfolio.groups });
+    } catch {
+      // non-fatal; ignore errors during background refresh
+    }
+  },
+
+  patchStockPrice: (symbol: string, price: number) => {
+    set(state => ({
+      stocks: state.stocks.map(s =>
+        (s as any).symbol === symbol
+          ? { ...s, current_price: price, currentPrice: price }
+          : s
+      ),
+    }));
   },
 
   getStockById: (stockId: string) => {

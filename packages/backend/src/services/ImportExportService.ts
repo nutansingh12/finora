@@ -8,6 +8,8 @@ import { BaseModel } from '../models/BaseModel';
 import { Stock } from '../models/Stock';
 import { UserStock } from '../models/UserStock';
 import { StockGroup } from '../models/StockGroup';
+import { StockPrice } from '../models/StockPrice';
+import { RollingAnalysis } from '../models/RollingAnalysis';
 import { AlphaVantageService } from './AlphaVantageService';
 import { YahooFinanceService } from './YahooFinanceService';
 
@@ -52,7 +54,12 @@ export interface ImportRow {
   targetPrice?: number;
   cutoffPrice?: number;
   groupName?: string;
+  currentPrice?: number;
+  low52Week?: number;
+  low24Week?: number;
+  low12Week?: number;
   notes?: string;
+  lastUpdated?: string;
 }
 
 export class ImportExportService {
@@ -223,21 +230,30 @@ export class ImportExportService {
 
   // Export portfolio template
   static async exportTemplate(): Promise<string> {
+    const today = new Date().toISOString().split('T')[0];
     const templateData = [
       {
         symbol: 'AAPL',
-        targetPrice: 150.00,
         cutoffPrice: 120.00,
         groupName: 'Tech Stocks',
-        notes: 'Example stock entry'
+        currentPrice: 175.50,
+        low52Week: 124.17,
+        low24Week: 140.00,
+        low12Week: 155.00,
+        notes: 'Example stock entry',
+        lastUpdated: today,
       },
       {
         symbol: 'GOOGL',
-        targetPrice: 2500.00,
-        cutoffPrice: 2000.00,
+        cutoffPrice: 140.00,
         groupName: 'Tech Stocks',
-        notes: 'Another example'
-      }
+        currentPrice: 165.00,
+        low52Week: 130.00,
+        low24Week: 145.00,
+        low12Week: 155.00,
+        notes: 'Another example',
+        lastUpdated: today,
+      },
     ];
 
     return this.generateCSV(templateData);
@@ -369,19 +385,14 @@ export class ImportExportService {
       throw new Error('Symbol is required');
     }
 
-    // Check for duplicates
-    const existingUserStock = await UserStock.findOne({
-      user_id: userId,
-      stock_id: await this.getStockIdBySymbol(symbol)
-    });
-
-    if (existingUserStock && !options.skipDuplicates) {
-      result.duplicates.push({
-        row: rowNumber,
-        symbol,
-        message: 'Stock already exists in portfolio'
-      });
-      return;
+    // Check for duplicates — always skip if already in portfolio
+    const existingStockId = await this.getStockIdBySymbol(symbol);
+    if (existingStockId) {
+      const existingUserStock = await UserStock.findOne({ user_id: userId, stock_id: existingStockId });
+      if (existingUserStock) {
+        result.duplicates.push({ row: rowNumber, symbol, message: 'Stock already exists in portfolio' });
+        return;
+      }
     }
 
     // Validate symbol if requested (Yahoo-first, then Alpha; do not block import if both fail)
@@ -456,6 +467,45 @@ export class ImportExportService {
       cutoff_price: row.cutoffPrice ? Number(row.cutoffPrice) : undefined,
       notes: row.notes
     });
+
+    // Seed price and rolling analysis from CSV values so the UI shows data immediately
+    const currentPrice = row.currentPrice ? Number(row.currentPrice) : undefined;
+    const low52 = row.low52Week ? Number(row.low52Week) : undefined;
+    const low24 = row.low24Week ? Number(row.low24Week) : undefined;
+    const low12 = row.low12Week ? Number(row.low12Week) : undefined;
+
+    try {
+      if (currentPrice && currentPrice > 0) {
+        await StockPrice.createPrice({
+          stock_id: stock.id,
+          price: currentPrice,
+          change: 0,
+          change_percent: 0,
+          volume: 0,
+          fifty_two_week_low: low52 || 0,
+          fifty_two_week_high: currentPrice,
+          is_latest: true,
+        });
+      }
+
+      if ((low52 || low24 || low12) && currentPrice && currentPrice > 0) {
+        const pctAbove = (low: number) => low > 0 ? ((currentPrice - low) / low) * 100 : 0;
+        await RollingAnalysis.upsertAnalysis({
+          stock_id: stock.id,
+          current_price: currentPrice,
+          week_52_low: low52 || 0,
+          week_24_low: low24 || 0,
+          week_12_low: low12 || 0,
+          percent_above_52w_low: pctAbove(low52 || 0),
+          percent_above_24w_low: pctAbove(low24 || 0),
+          percent_above_12w_low: pctAbove(low12 || 0),
+          volatility: 0,
+          trend_direction: 'sideways',
+        });
+      }
+    } catch (priceError) {
+      console.warn(`[import] Price/analysis seed failed for ${symbol}, stock still added:`, priceError instanceof Error ? priceError.message : priceError);
+    }
 
     result.successfulImports++;
   }
